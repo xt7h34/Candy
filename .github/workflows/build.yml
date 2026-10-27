@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply update.zip if present
+        run: |
+          if [ -f update.zip ]; then
+            unzip -o update.zip
+            rm update.zip
+            git config user.name "github-actions"
+            git config user.email "actions@users.noreply.github.com"
+            git add -A
+            git commit -m "Apply update" || true
+            git push origin HEAD:main
+          fi
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        # -PupdateRepo tells the app which repository to look at for newer versions.
+        run: gradle assembleDebug -Pandroid.useAndroidX=true -PupdateRepo=${{ github.repository }} --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: build/outputs/apk/debug/*.apk
+      - name: Read the version
+        id: ver
+        run: |
+          echo "code=$(grep -oP 'versionCode = \K[0-9]+' build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
+          echo "name=$(grep -oP 'versionName = "\K[^"]+' build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
+          APK=$(ls build/outputs/apk/debug/*.apk | head -1)
+          cp "$APK" "Candy-$(grep -oP 'versionName = "\K[^"]+' build.gradle.kts | head -1).apk"
+      - name: Publish a release for the app to find
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.ver.outputs.code }}
+          name: Candy ${{ steps.ver.outputs.name }}
+          body_path: RELEASE_NOTES.md
+          files: Candy-${{ steps.ver.outputs.name }}.apk
+          make_latest: true
