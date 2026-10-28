@@ -280,6 +280,8 @@ fun MeScreen(
                 )
             }
 
+            UpdateSection()
+
             TextButton(onClick = onSignOut) { Text(stringResource(R.string.prof_signout)) }
 
             if (editingVibe) {

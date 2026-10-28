@@ -112,4 +112,26 @@
     <string name="report_hint">What is wrong? (optional)</string>
     <string name="report_sent">Thanks, we got your report.</string>
     <string name="post_loading_failed">This post is not available.</string>
+    <string name="upd_dialog_title">New version available</string>
+    <string name="upd_dialog_text">%1$s is ready to install.</string>
+    <string name="upd_size">Size: %1$s MB</string>
+    <string name="upd_notes">What is new</string>
+    <string name="upd_downloading">Downloading... %1$d%%</string>
+    <string name="upd_failed">Could not get the update. Check your connection and try again.</string>
+    <string name="upd_bad_file">The downloaded file did not pass the safety check, so it was deleted.</string>
+    <string name="upd_allow">Allow Candy to install apps in the screen that just opened, then tap Install again.</string>
+    <string name="upd_install">Install</string>
+    <string name="upd_download">Download and install</string>
+    <string name="upd_skip">Skip this version</string>
+    <string name="upd_later">Later</string>
+    <string name="upd_title">App updates</string>
+    <string name="upd_current">Installed: %1$s (build %2$d)</string>
+    <string name="upd_checking">Checking...</string>
+    <string name="upd_uptodate">You have the latest version.</string>
+    <string name="upd_new">New version: %1$s</string>
+    <string name="upd_noconfig">Updates are not set up for this build.</string>
+    <string name="upd_check">Check for updates</string>
+    <string name="upd_auto">Check automatically</string>
+    <string name="handoff_signing_in">Signing you in with your Kanade account...</string>
+    <string name="auth_from_kanade">Already use Kanade? Open Candy from the Kanade app and you are in with one tap.</string>
 </resources>

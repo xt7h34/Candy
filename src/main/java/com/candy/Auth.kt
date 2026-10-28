@@ -62,12 +62,12 @@ private fun Logo() {
 
 /** Sign in or create a Kanade account. It is the same account in both apps. */
 @Composable
-fun AuthScreen(onSignedIn: (Session) -> Unit) {
+fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var step by remember { mutableStateOf(Step.Start) }
     var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
+    var error by remember(initialError) { mutableStateOf(initialError) }
 
     var ident by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
@@ -126,6 +126,8 @@ fun AuthScreen(onSignedIn: (Session) -> Unit) {
                     onClick = { error = ""; step = Step.Register },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.auth_new)) }
+                ErrorText(error)
+                Muted(stringResource(R.string.auth_from_kanade))
             }
 
             Step.Login -> {
@@ -140,7 +142,7 @@ fun AuthScreen(onSignedIn: (Session) -> Unit) {
                             val r = CandyApi.call(
                                 "/auth/login",
                                 JSONObject().put("identifier", ident.trim()).put("password", pass)
-                                    .put("device", Build.MODEL),
+                                    .put("device", Build.MODEL).put("app", "candy"),
                             )
                             busy = false
                             finish(r)
@@ -194,7 +196,7 @@ fun AuthScreen(onSignedIn: (Session) -> Unit) {
                             }
                             val payload = JSONObject().put("name", name.trim()).put("birthdate", birth.trim())
                                 .put("hash", hash.trim()).put("phone", digits)
-                                .put("password", newPass).put("device", Build.MODEL)
+                                .put("password", newPass).put("device", Build.MODEL).put("app", "candy")
                             if (email.isNotBlank()) payload.put("email", email.trim())
                             val r = CandyApi.call("/auth/register/start", payload)
                             busy = false

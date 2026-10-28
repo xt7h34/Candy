@@ -112,4 +112,26 @@
     <string name="report_hint">إيه المشكلة؟ (اختياري)</string>
     <string name="report_sent">شكرًا، وصلنا البلاغ.</string>
     <string name="post_loading_failed">البوست ده مش متاح.</string>
+    <string name="upd_dialog_title">فيه تحديث جديد</string>
+    <string name="upd_dialog_text">%1$s جاهز للتثبيت.</string>
+    <string name="upd_size">الحجم: %1$s ميجا</string>
+    <string name="upd_notes">الجديد</string>
+    <string name="upd_downloading">بنحمّل... %1$d%%</string>
+    <string name="upd_failed">مقدرتش أجيب التحديث. اتأكد من النت وجرّب تاني.</string>
+    <string name="upd_bad_file">الملف اللي اتنزّل ماعدّاش فحص الأمان فاتمسح.</string>
+    <string name="upd_allow">اسمح لكاندي بتثبيت التطبيقات في الشاشة اللي اتفتحت، وبعدين دوس تثبيت تاني.</string>
+    <string name="upd_install">تثبيت</string>
+    <string name="upd_download">نزّل وثبّت</string>
+    <string name="upd_skip">تخطي النسخة دي</string>
+    <string name="upd_later">بعدين</string>
+    <string name="upd_title">تحديثات التطبيق</string>
+    <string name="upd_current">المثبّت: %1$s (بناء %2$d)</string>
+    <string name="upd_checking">بنفحص...</string>
+    <string name="upd_uptodate">عندك آخر إصدار.</string>
+    <string name="upd_new">إصدار جديد: %1$s</string>
+    <string name="upd_noconfig">التحديثات مش متظبطة في النسخة دي.</string>
+    <string name="upd_check">دوّر على تحديث</string>
+    <string name="upd_auto">فحص تلقائي</string>
+    <string name="handoff_signing_in">بنسجّل دخولك بحساب كندا...</string>
+    <string name="auth_from_kanade">بتستخدم كندا؟ افتح كاندي من تطبيق كندا وهتدخل بضغطة واحدة.</string>
 </resources>

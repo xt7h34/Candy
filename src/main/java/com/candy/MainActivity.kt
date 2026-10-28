@@ -1,18 +1,24 @@
 package com.candy
 
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,33 +26,91 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
+    /** A one-time code from the Kanade app, to sign in with the same account. */
+    private var handoff by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handoff = handoffCode(intent)
         setContent {
             CandyTheme {
-                CandyRoot()
+                CandyRoot(handoff) {
+                    handoff = null
+                    intent.removeExtra(HANDOFF_EXTRA)
+                }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handoff = handoffCode(intent)
+    }
 }
+
+private const val HANDOFF_EXTRA = "handoff_code"
+private val HANDOFF_FORMAT = Regex("^[a-f0-9]{24}$")
+
+private fun handoffCode(i: Intent?): String? =
+    i?.getStringExtra(HANDOFF_EXTRA)?.takeIf { HANDOFF_FORMAT.matches(it) }
 
 /** Signed out: the sign-in screen. Signed in: the app. */
 @Composable
-fun CandyRoot() {
+fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf(SessionStore.load(ctx)) }
+    var exchanging by remember { mutableStateOf(false) }
+    var handoffError by remember { mutableStateOf("") }
+
+    // The Kanade app opened Candy with a one-time code: trade it for a sign-in of our own.
+    LaunchedEffect(handoff) {
+        val code = handoff ?: return@LaunchedEffect
+        exchanging = true
+        handoffError = ""
+        val r = CandyApi.call(
+            "/auth/handoff/exchange",
+            JSONObject().put("code", code).put("device", Build.MODEL),
+        )
+        exchanging = false
+        onHandoffDone()
+        val token = r.body?.optString("token").orEmpty()
+        val profile = r.body?.optJSONObject("profile")
+        if (r.ok && token.isNotEmpty() && profile != null) {
+            val signedIn = Session(token, profile)
+            SessionStore.save(ctx, signedIn)
+            AvatarCache.clear()
+            MediaCache.clear()
+            session = signedIn
+        } else {
+            handoffError = r.message(ctx)
+        }
+    }
 
     val s = session
-    if (s == null) {
-        AuthScreen(onSignedIn = { session = it })
+    if (exchanging) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(stringResource(R.string.handoff_signing_in))
+            }
+        }
+    } else if (s == null) {
+        AuthScreen(onSignedIn = { session = it }, initialError = handoffError)
     } else {
         val net = remember(s.token) {
             Net(s.token) {
@@ -91,6 +155,8 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     val stack = remember { mutableStateListOf<Dest>() }
     // goes up whenever a post is created or deleted, so the feed and the profile reload
     var refreshTick by remember { mutableStateOf(0) }
+
+    UpdatePrompt()
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }
     BackHandler(enabled = stack.isEmpty() && tab != 0) { tab = 0 }
