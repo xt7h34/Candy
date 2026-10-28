@@ -53,6 +53,7 @@ fun CandyRoot() {
                 // The bot says this sign-in is over (signed out from another device, for example).
                 SessionStore.clear(ctx)
                 AvatarCache.clear()
+                MediaCache.clear()
                 session = null
             }
         }
@@ -64,6 +65,7 @@ fun CandyRoot() {
                     net.post("/auth/logout")
                     SessionStore.clear(ctx)
                     AvatarCache.clear()
+                    MediaCache.clear()
                     session = null
                 }
             },
@@ -78,6 +80,8 @@ sealed class Dest {
     object Bubbles : Dest()
     object Visits : Dest()
     object Growth : Dest()
+    class OpenPost(val id: String) : Dest()
+    object NewPost : Dest()
 }
 
 @Composable
@@ -85,6 +89,8 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     val myHash = session.profile.optString("hash")
     var tab by rememberSaveable { mutableStateOf(0) }
     val stack = remember { mutableStateListOf<Dest>() }
+    // goes up whenever a post is created or deleted, so the feed and the profile reload
+    var refreshTick by remember { mutableStateOf(0) }
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }
     BackHandler(enabled = stack.isEmpty() && tab != 0) { tab = 0 }
@@ -129,7 +135,19 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
             val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
             if (top != null) {
                 when (top) {
-                    is Dest.Profile -> ProfileScreen(net, top.hash, back)
+                    is Dest.Profile -> ProfileScreen(net, top.hash, back) { stack.add(Dest.OpenPost(it)) }
+                    is Dest.OpenPost -> PostScreen(
+                        net = net,
+                        postId = top.id,
+                        onBack = back,
+                        onOpenProfile = ::openProfile,
+                        onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                    )
+                    Dest.NewPost -> NewPostScreen(
+                        net = net,
+                        onBack = back,
+                        onPosted = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                    )
                     is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
                     Dest.Bubbles -> BubblesScreen(net, back)
                     Dest.Visits -> VisitsScreen(net, back, ::openProfile)
@@ -137,7 +155,13 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                 }
             } else {
                 when (tab) {
-                    0 -> FeedScreen(net, ::openProfile)
+                    0 -> FeedScreen(
+                        net = net,
+                        refreshKey = refreshTick,
+                        onOpen = ::openProfile,
+                        onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                        onNewPost = { stack.add(Dest.NewPost) },
+                    )
                     1 -> SearchScreen(net, ::openProfile)
                     else -> MeScreen(
                         net = net,
@@ -146,6 +170,9 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         onVisits = { stack.add(Dest.Visits) },
                         onGrowth = { stack.add(Dest.Growth) },
                         onSignOut = onSignOut,
+                        refreshKey = refreshTick,
+                        onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                        onNewPost = { stack.add(Dest.NewPost) },
                     )
                 }
             }

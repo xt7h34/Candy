@@ -17,6 +17,7 @@ class CUser(
     val isMe: Boolean,
     val followedByMe: Boolean,
     val followsMe: Boolean,
+    val posts: Int = 0,
 )
 
 fun JSONObject.toUser() = CUser(
@@ -29,6 +30,7 @@ fun JSONObject.toUser() = CUser(
     isMe = optBoolean("isMe"),
     followedByMe = optBoolean("followedByMe"),
     followsMe = optBoolean("followsMe"),
+    posts = optInt("posts"),
 )
 
 fun JSONArray?.toUsers(): List<CUser> {
@@ -89,6 +91,74 @@ fun JSONArray?.toBubbles(): List<Bubble> {
             }
         }
         out.add(Bubble(o.optString("name"), people))
+    }
+    return out
+}
+
+/** A photo post. */
+class Post(
+    val id: String,
+    val caption: String,
+    val at: Long,
+    val w: Int,
+    val h: Int,
+    val likes: Int,
+    val liked: Boolean,
+    val comments: Int,
+    val mine: Boolean,
+    val ownerName: String,
+    val ownerHash: String,
+)
+
+fun JSONObject.toPost(): Post {
+    val owner = optJSONObject("owner")
+    return Post(
+        id = optString("id"),
+        caption = optString("caption"),
+        at = optLong("at"),
+        w = optInt("w"),
+        h = optInt("h"),
+        likes = optInt("likes"),
+        liked = optBoolean("liked"),
+        comments = optInt("comments"),
+        mine = optBoolean("mine"),
+        ownerName = owner?.optString("name").orEmpty(),
+        ownerHash = owner?.optString("hash").orEmpty(),
+    )
+}
+
+fun JSONArray?.toPosts(): List<Post> {
+    if (this == null) return emptyList()
+    val out = ArrayList<Post>()
+    for (i in 0 until length()) optJSONObject(i)?.let { out.add(it.toPost()) }
+    return out
+}
+
+class Comment(
+    val id: String,
+    val text: String,
+    val at: Long,
+    val canDelete: Boolean,
+    val ownerName: String,
+    val ownerHash: String,
+)
+
+fun JSONArray?.toComments(): List<Comment> {
+    if (this == null) return emptyList()
+    val out = ArrayList<Comment>()
+    for (i in 0 until length()) {
+        val o = optJSONObject(i) ?: continue
+        val owner = o.optJSONObject("owner")
+        out.add(
+            Comment(
+                id = o.optString("id"),
+                text = o.optString("text"),
+                at = o.optLong("at"),
+                canDelete = o.optBoolean("canDelete"),
+                ownerName = owner?.optString("name").orEmpty(),
+                ownerHash = owner?.optString("hash").orEmpty(),
+            ),
+        )
     }
     return out
 }

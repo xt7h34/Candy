@@ -33,7 +33,7 @@
     <string name="nav_search">بحث</string>
     <string name="nav_me">أنا</string>
     <string name="feed_title">الدريفتس</string>
-    <string name="feed_empty">مفيش حاجة لسه. تابع ناس عشان تشوف الدريفتس بتاعتهم.</string>
+    <string name="feed_empty">مفيش حاجة لسه. تابع ناس عشان تشوف البوستات والدريفتس بتاعتهم.</string>
     <string name="feed_mine">الدريفتس بتاعتك</string>
     <string name="feed_new">دريفت جديد</string>
     <string name="time_left_hm">باقي %1$d س %2$d د</string>
@@ -94,4 +94,22 @@
     <string name="growth_week">الأسبوع ده</string>
     <string name="growth_month">الشهر ده</string>
     <string name="growth_none">لسه بنجمّع البيانات. ارجع بكرة.</string>
+    <string name="feed_new_post">بوست جديد</string>
+    <string name="post_title">بوست</string>
+    <string name="post_pick">اختر صورة</string>
+    <string name="post_caption_hint">اكتب كابشن (اختياري)</string>
+    <string name="post_none">مفيش بوستات لسه.</string>
+    <string name="prof_posts">البوستات</string>
+    <string name="load_more">عرض المزيد</string>
+    <string name="post_comments_title">الكومنتات</string>
+    <string name="post_no_comments">مفيش كومنتات لسه.</string>
+    <string name="post_comment_hint">اكتب كومنت</string>
+    <string name="post_send">إرسال</string>
+    <string name="post_delete">حذف</string>
+    <string name="post_delete_confirm">تمسح البوست ده؟ مينفعش ترجعه.</string>
+    <string name="post_report">إبلاغ</string>
+    <string name="report_title">إبلاغ</string>
+    <string name="report_hint">إيه المشكلة؟ (اختياري)</string>
+    <string name="report_sent">شكرًا، وصلنا البلاغ.</string>
+    <string name="post_loading_failed">البوست ده مش متاح.</string>
 </resources>

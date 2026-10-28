@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -35,31 +39,51 @@ import org.json.JSONObject
 private const val DRIFT_LIMIT = 210
 
 @Composable
-fun FeedScreen(net: Net, onOpen: (String) -> Unit) {
+fun FeedScreen(
+    net: Net,
+    refreshKey: Int,
+    onOpen: (String) -> Unit,
+    onOpenPost: (String) -> Unit,
+    onNewPost: () -> Unit,
+) {
     val ctx = LocalContext.current
-    var items by remember { mutableStateOf<List<Drift>>(emptyList()) }
-    var mine by remember { mutableStateOf<List<Drift>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+    var drifts by remember { mutableStateOf<List<Drift>>(emptyList()) }
+    var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var next by remember { mutableStateOf<Long?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
     var composing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(reload) {
-        loading = true
-        val r = net.get("/candy/feed")
-        loading = false
+    suspend fun loadPosts(before: Long?) {
+        val r = net.get("/candy/posts/feed" + if (before != null) "?before=$before" else "")
         if (r.ok) {
-            items = r.body?.optJSONArray("items").toDrifts()
-            mine = r.body?.optJSONArray("mine").toDrifts()
+            val page = r.body?.optJSONArray("items").toPosts()
+            posts = if (before == null) page else posts + page
+            next = if (r.body?.isNull("next") == false) r.body?.optLong("next") else null
             error = ""
         } else {
             error = r.message(ctx)
         }
     }
 
+    LaunchedEffect(reload, refreshKey) {
+        loading = true
+        val r = net.get("/candy/feed")
+        if (r.ok) {
+            // your own drifts come first, then the ones from people you follow
+            drifts = r.body?.optJSONArray("mine").toDrifts() + r.body?.optJSONArray("items").toDrifts()
+        } else {
+            error = r.message(ctx)
+        }
+        loadPosts(null)
+        loading = false
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Row(
@@ -67,22 +91,38 @@ fun FeedScreen(net: Net, onOpen: (String) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(stringResource(R.string.feed_title), style = MaterialTheme.typography.headlineSmall)
-                Row {
-                    TextButton(onClick = { reload++ }) { Text(stringResource(R.string.refresh)) }
-                    Button(onClick = { composing = true }) { Text(stringResource(R.string.feed_new)) }
+                Text(stringResource(R.string.nav_feed), style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = { reload++ }) { Text(stringResource(R.string.refresh)) }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onNewPost, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.feed_new_post))
+                }
+                OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.feed_new))
                 }
             }
         }
         item { ErrorText(error) }
-        if (loading && items.isEmpty() && mine.isEmpty()) item { Loading() }
-        if (mine.isNotEmpty()) {
-            item { SectionTitle(stringResource(R.string.feed_mine)) }
-            items(mine) { DriftCard(it, net.token, null) }
+        if (drifts.isNotEmpty()) {
+            item { SectionTitle(stringResource(R.string.feed_title)) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(drifts) { DriftChip(it, net.token, onOpen) }
+                }
+            }
         }
-        if (items.isNotEmpty()) {
-            items(items) { DriftCard(it, net.token, onOpen) }
-        } else if (!loading && error.isEmpty()) {
+        items(posts) { PostCard(net, it, onOpenPost, onOpen) }
+        val more = next
+        if (more != null) {
+            item {
+                TextButton(onClick = { scope.launch { loadPosts(more) } }) { Text(stringResource(R.string.load_more)) }
+            }
+        }
+        if (loading && posts.isEmpty() && drifts.isEmpty()) item { Loading() }
+        if (!loading && error.isEmpty() && posts.isEmpty() && drifts.isEmpty()) {
             item { Muted(stringResource(R.string.feed_empty), Modifier.padding(vertical = 16.dp)) }
         }
         item { Column(Modifier.padding(bottom = 16.dp)) {} }
@@ -94,6 +134,37 @@ fun FeedScreen(net: Net, onOpen: (String) -> Unit) {
             onDismiss = { composing = false },
             onPosted = { composing = false; reload++ },
         )
+    }
+}
+
+/** A drift as a small card in the strip at the top of the feed. */
+@Composable
+private fun DriftChip(d: Drift, token: String, onOpen: (String) -> Unit) {
+    val ctx = LocalContext.current
+    Card(
+        modifier = Modifier
+            .width(230.dp)
+            .then(if (d.ownerHash.isNotEmpty()) Modifier.clickable { onOpen(d.ownerHash) } else Modifier),
+    ) {
+        Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (d.ownerHash.isNotEmpty()) Avatar(d.ownerHash, token, 36.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    d.ownerName.ifBlank { d.ownerHash },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    d.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Muted(timeLeft(ctx, d.expiresAt))
+            }
+        }
     }
 }
 

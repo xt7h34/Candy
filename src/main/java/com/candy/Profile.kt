@@ -36,7 +36,11 @@ private const val VIBE_LIMIT_FALLBACK = 160
 
 @Composable
 private fun CountsRow(user: CUser, onFollowers: (() -> Unit)?, onFollowing: (() -> Unit)?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(user.posts.toString(), style = MaterialTheme.typography.titleLarge)
+            Muted(stringResource(R.string.prof_posts))
+        }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.then(if (onFollowers != null) Modifier.clickable { onFollowers() } else Modifier),
@@ -72,7 +76,7 @@ private fun ProfileInfo(u: CUser) {
 
 /** Someone else's profile, with a follow button and the drifts you can see. */
 @Composable
-fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit) {
+fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var user by remember { mutableStateOf<CUser?>(null) }
@@ -81,6 +85,8 @@ fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
+    var reporting by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf("") }
 
     LaunchedEffect(hash, reload) {
         loading = true
@@ -130,10 +136,30 @@ fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit) {
                         }
                     }
                 }
+                if (!u.isMe) {
+                    TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.post_report)) }
+                    if (notice.isNotEmpty()) Muted(notice)
+                }
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionTitle(stringResource(R.string.prof_drifts))
                     if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
                     for (d in drifts) DriftCard(d, net.token, null)
+                }
+                PostsSection(net, u.hash, reload, onOpenPost)
+                if (reporting) {
+                    ReportDialog(
+                        onSend = { reason ->
+                            reporting = false
+                            scope.launch {
+                                val r = net.post(
+                                    "/candy/report",
+                                    JSONObject().put("type", "user").put("id", bareHash(u.hash)).put("reason", reason),
+                                )
+                                if (r.ok) notice = ctx.getString(R.string.report_sent) else error = r.message(ctx)
+                            }
+                        },
+                        onDismiss = { reporting = false },
+                    )
                 }
             }
         }
@@ -171,6 +197,9 @@ fun MeScreen(
     onVisits: () -> Unit,
     onGrowth: () -> Unit,
     onSignOut: () -> Unit,
+    refreshKey: Int,
+    onOpenPost: (String) -> Unit,
+    onNewPost: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -180,7 +209,7 @@ fun MeScreen(
     var editingVibe by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(reload) {
+    LaunchedEffect(reload, refreshKey) {
         val r = net.get("/candy/me")
         if (r.ok) {
             me = r.body
@@ -216,6 +245,11 @@ fun MeScreen(
                     Text(stringResource(R.string.prof_post_drift))
                 }
             }
+
+            Button(onClick = onNewPost, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.feed_new_post))
+            }
+            PostsSection(net, null, reload + refreshKey, onOpenPost)
 
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = onBubbles, modifier = Modifier.fillMaxWidth()) {

@@ -33,7 +33,7 @@
     <string name="nav_search">Search</string>
     <string name="nav_me">Me</string>
     <string name="feed_title">Drifts</string>
-    <string name="feed_empty">Nothing here yet. Follow people to see their drifts.</string>
+    <string name="feed_empty">Nothing here yet. Follow people to see their posts and drifts.</string>
     <string name="feed_mine">Your drifts</string>
     <string name="feed_new">New drift</string>
     <string name="time_left_hm">%1$dh %2$dm left</string>
@@ -94,4 +94,22 @@
     <string name="growth_week">This week</string>
     <string name="growth_month">This month</string>
     <string name="growth_none">We are still collecting data. Check again tomorrow.</string>
+    <string name="feed_new_post">New post</string>
+    <string name="post_title">Post</string>
+    <string name="post_pick">Choose a photo</string>
+    <string name="post_caption_hint">Write a caption (optional)</string>
+    <string name="post_none">No posts yet.</string>
+    <string name="prof_posts">Posts</string>
+    <string name="load_more">Load more</string>
+    <string name="post_comments_title">Comments</string>
+    <string name="post_no_comments">No comments yet.</string>
+    <string name="post_comment_hint">Add a comment</string>
+    <string name="post_send">Send</string>
+    <string name="post_delete">Delete</string>
+    <string name="post_delete_confirm">Delete this post? You cannot undo it.</string>
+    <string name="post_report">Report</string>
+    <string name="report_title">Report</string>
+    <string name="report_hint">What is wrong? (optional)</string>
+    <string name="report_sent">Thanks, we got your report.</string>
+    <string name="post_loading_failed">This post is not available.</string>
 </resources>
