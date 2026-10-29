@@ -76,7 +76,7 @@ private fun ProfileInfo(u: CUser) {
 
 /** Someone else's profile, with a follow button and the drifts you can see. */
 @Composable
-fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (String) -> Unit) {
+fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (String) -> Unit, onMessage: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var user by remember { mutableStateOf<CUser?>(null) }
@@ -137,6 +137,9 @@ fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (Strin
                     }
                 }
                 if (!u.isMe) {
+                    OutlinedButton(onClick = { onMessage(u.hash) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.prof_message))
+                    }
                     TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.post_report)) }
                     if (notice.isNotEmpty()) Muted(notice)
                 }

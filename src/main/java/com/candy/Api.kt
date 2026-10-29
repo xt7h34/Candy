@@ -7,6 +7,8 @@ import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore
@@ -64,6 +66,66 @@ object CandyApi {
                 ApiResult(code, runCatching { JSONObject(text) }.getOrNull())
             } catch (e: Exception) {
                 ApiResult(0, null)
+            } finally {
+                conn?.disconnect()
+            }
+        }
+
+    /** Sends a video as the raw request body. The answer holds the id to use when posting the stage. */
+    suspend fun uploadVideo(token: String, input: InputStream, length: Long, onProgress: (Float) -> Unit): ApiResult =
+        withContext(Dispatchers.IO) {
+            var conn: HttpURLConnection? = null
+            try {
+                val c = URL(base + "/candy/upload").openConnection() as HttpURLConnection
+                conn = c
+                c.connectTimeout = if (remote != null) 10000 else 4000
+                c.readTimeout = 60000
+                c.requestMethod = "POST"
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(length)
+                c.setRequestProperty("Content-Type", "video/mp4")
+                c.setRequestProperty("Accept", "application/json")
+                c.setRequestProperty("ngrok-skip-browser-warning", "1")
+                c.setRequestProperty("Authorization", "Bearer $token")
+                c.outputStream.use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    var sent = 0L
+                    var n = input.read(buf)
+                    while (n != -1) {
+                        out.write(buf, 0, n)
+                        sent += n
+                        onProgress(if (length > 0) (sent.toFloat() / length.toFloat()).coerceIn(0f, 1f) else 0f)
+                        n = input.read(buf)
+                    }
+                }
+                val code = c.responseCode
+                val stream = if (code in 200..299) c.inputStream else c.errorStream
+                val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                ApiResult(code, runCatching { JSONObject(text) }.getOrNull())
+            } catch (e: Exception) {
+                ApiResult(0, null)
+            } finally {
+                conn?.disconnect()
+            }
+        }
+
+    /** Saves a file (a stage video) into [dest]. Returns false when it could not be fetched. */
+    suspend fun download(path: String, token: String, dest: File, maxBytes: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            var conn: HttpURLConnection? = null
+            try {
+                val c = URL(base + path).openConnection() as HttpURLConnection
+                conn = c
+                c.connectTimeout = if (remote != null) 10000 else 4000
+                c.readTimeout = 30000
+                c.setRequestProperty("ngrok-skip-browser-warning", "1")
+                c.setRequestProperty("Authorization", "Bearer $token")
+                if (c.responseCode !in 200..299 || c.contentLengthLong > maxBytes) return@withContext false
+                c.inputStream.use { input -> dest.outputStream().use { input.copyTo(it) } }
+                true
+            } catch (e: Exception) {
+                dest.delete()
+                false
             } finally {
                 conn?.disconnect()
             }

@@ -102,6 +102,7 @@ class Post(
     val at: Long,
     val w: Int,
     val h: Int,
+    val hasImage: Boolean,
     val likes: Int,
     val liked: Boolean,
     val comments: Int,
@@ -118,6 +119,7 @@ fun JSONObject.toPost(): Post {
         at = optLong("at"),
         w = optInt("w"),
         h = optInt("h"),
+        hasImage = optBoolean("hasImage", optInt("w") > 0),
         likes = optInt("likes"),
         liked = optBoolean("liked"),
         comments = optInt("comments"),
@@ -163,7 +165,20 @@ fun JSONArray?.toComments(): List<Comment> {
     return out
 }
 
-/** One picture in a story. */
+/** A piece of text written on top of a stage. [x] and [y] are fractions of the screen, [c] a colour and [s] a size. */
+data class Overlay(val t: String, val x: Float, val y: Float, val c: Int, val s: Int)
+
+fun JSONArray?.toOverlays(): List<Overlay> {
+    if (this == null) return emptyList()
+    val out = ArrayList<Overlay>()
+    for (i in 0 until length()) {
+        val o = optJSONObject(i) ?: continue
+        out.add(Overlay(o.optString("t"), o.optDouble("x").toFloat(), o.optDouble("y").toFloat(), o.optInt("c"), o.optInt("s")))
+    }
+    return out
+}
+
+/** One picture or video in a stage. */
 class StoryItem(
     val id: String,
     val at: Long,
@@ -171,6 +186,8 @@ class StoryItem(
     val caption: String,
     val seen: Boolean,
     val views: Int,
+    val kind: String,
+    val overlays: List<Overlay>,
 )
 
 /** All the live stories of one person. */
@@ -201,6 +218,8 @@ fun JSONArray?.toStoryGroups(): List<StoryGroup> {
                         caption = s.optString("caption"),
                         seen = s.optBoolean("seen"),
                         views = s.optInt("views"),
+                        kind = s.optString("kind", "photo"),
+                        overlays = s.optJSONArray("overlays").toOverlays(),
                     ),
                 )
             }

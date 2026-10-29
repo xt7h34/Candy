@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -147,7 +150,9 @@ sealed class Dest {
     class OpenPost(val id: String) : Dest()
     object NewPost : Dest()
     class Story(val hash: String) : Dest()
-    object NewStory : Dest()
+    class Chat(val hash: String) : Dest()
+    object Camera : Dest()
+    object StageEdit : Dest()
 }
 
 @Composable
@@ -155,10 +160,26 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     val myHash = session.profile.optString("hash")
     var tab by rememberSaveable { mutableStateOf(0) }
     val stack = remember { mutableStateListOf<Dest>() }
-    // goes up whenever a post is created or deleted, so the feed and the profile reload
+    // goes up whenever a track or stage is created or deleted, so the feed and the profile reload
     var refreshTick by remember { mutableStateOf(0) }
+    // the photo or video picked in the camera, waiting for its editor
+    var pending by remember { mutableStateOf<Picked?>(null) }
+    // unread messages, for the badge on the Chats tab
+    var unread by remember { mutableStateOf(0) }
 
     UpdatePrompt()
+
+    LaunchedEffect(refreshTick, tab, stack.size) {
+        val r = net.get("/candy/dm/unread")
+        if (r.ok) unread = r.body?.optInt("count") ?: 0
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000)
+            val r = net.get("/candy/dm/unread")
+            if (r.ok) unread = r.body?.optInt("count") ?: 0
+        }
+    }
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }
     BackHandler(enabled = stack.isEmpty() && tab != 0) { tab = 0 }
@@ -166,96 +187,139 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     fun openProfile(hash: String) {
         if (bareHash(hash).equals(bareHash(myHash), ignoreCase = true)) {
             stack.clear()
-            tab = 2
+            tab = 3
         } else {
             stack.add(Dest.Profile(hash))
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            if (stack.isEmpty()) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = tab == 0,
-                        onClick = { tab = 0 },
-                        icon = { Text("🍬") },
-                        label = { Text(stringResource(R.string.nav_feed)) },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 1,
-                        onClick = { tab = 1 },
-                        icon = { Text("🔎") },
-                        label = { Text(stringResource(R.string.nav_search)) },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 2,
-                        onClick = { tab = 2 },
-                        icon = { Text("👤") },
-                        label = { Text(stringResource(R.string.nav_me)) },
-                    )
+    val top = if (stack.isEmpty()) null else stack[stack.lastIndex]
+    val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
+    val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.Story
+
+    if (fullScreen) {
+        // the camera, the editor and the stage viewer use the whole screen
+        Box(Modifier.fillMaxSize()) {
+            when (top) {
+                is Dest.Camera -> CameraScreen(
+                    onBack = back,
+                    onPicked = { picked, dest ->
+                        pending = picked
+                        stack.removeAt(stack.lastIndex)
+                        stack.add(if (dest == "stage") Dest.StageEdit else Dest.NewPost)
+                    },
+                )
+                is Dest.StageEdit -> {
+                    val p = pending
+                    if (p == null) {
+                        LaunchedEffect(Unit) { back() }
+                    } else {
+                        StageEditorScreen(
+                            net = net,
+                            picked = p,
+                            onBack = { pending = null; back() },
+                            onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
+                        )
+                    }
                 }
+                is Dest.Story -> StoryViewer(
+                    net = net,
+                    hash = top.hash,
+                    onBack = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                )
+                else -> {}
             }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            val top = if (stack.isEmpty()) null else stack[stack.lastIndex]
-            val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
-            if (top != null) {
-                when (top) {
-                    is Dest.Profile -> ProfileScreen(net, top.hash, back) { stack.add(Dest.OpenPost(it)) }
-                    is Dest.OpenPost -> PostScreen(
-                        net = net,
-                        postId = top.id,
-                        onBack = back,
-                        onOpenProfile = ::openProfile,
-                        onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
-                    )
-                    is Dest.Story -> StoryViewer(
-                        net = net,
-                        hash = top.hash,
-                        onBack = { refreshTick++; stack.removeAt(stack.lastIndex) },
-                    )
-                    Dest.NewStory -> NewPostScreen(
-                        net = net,
-                        story = true,
-                        onBack = back,
-                        onPosted = { refreshTick++; stack.removeAt(stack.lastIndex) },
-                    )
-                    Dest.NewPost -> NewPostScreen(
-                        net = net,
-                        story = false,
-                        onBack = back,
-                        onPosted = { refreshTick++; stack.removeAt(stack.lastIndex) },
-                    )
-                    is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
-                    Dest.Bubbles -> BubblesScreen(net, back)
-                    Dest.Visits -> VisitsScreen(net, back, ::openProfile)
-                    Dest.Growth -> GrowthScreen(net, back)
+        }
+    } else {
+        Scaffold(
+            bottomBar = {
+                if (stack.isEmpty()) {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = tab == 0,
+                            onClick = { tab = 0 },
+                            icon = { Text("🍬") },
+                            label = { Text(stringResource(R.string.nav_feed)) },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 1,
+                            onClick = { tab = 1 },
+                            icon = { Text("🔎") },
+                            label = { Text(stringResource(R.string.nav_search)) },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 2,
+                            onClick = { tab = 2 },
+                            icon = {
+                                BadgedBox(badge = { if (unread > 0) Badge { Text(unread.toString()) } }) { Text("💬") }
+                            },
+                            label = { Text(stringResource(R.string.nav_chats)) },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 3,
+                            onClick = { tab = 3 },
+                            icon = { Text("👤") },
+                            label = { Text(stringResource(R.string.nav_me)) },
+                        )
+                    }
                 }
-            } else {
-                when (tab) {
-                    0 -> FeedScreen(
-                        net = net,
-                        refreshKey = refreshTick,
-                        onOpen = ::openProfile,
-                        onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                        onNewPost = { stack.add(Dest.NewPost) },
-                        onOpenStory = { stack.add(Dest.Story(it)) },
-                        onNewStory = { stack.add(Dest.NewStory) },
-                    )
-                    1 -> SearchScreen(net, ::openProfile)
-                    else -> MeScreen(
-                        net = net,
-                        onUsers = { stack.add(Dest.Users(it)) },
-                        onBubbles = { stack.add(Dest.Bubbles) },
-                        onVisits = { stack.add(Dest.Visits) },
-                        onGrowth = { stack.add(Dest.Growth) },
-                        onSignOut = onSignOut,
-                        refreshKey = refreshTick,
-                        onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                        onNewPost = { stack.add(Dest.NewPost) },
-                    )
+            },
+        ) { pad ->
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                if (top != null) {
+                    when (top) {
+                        is Dest.Profile -> ProfileScreen(
+                            net = net,
+                            hash = top.hash,
+                            onBack = back,
+                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                            onMessage = { stack.add(Dest.Chat(it)) },
+                        )
+                        is Dest.OpenPost -> PostScreen(
+                            net = net,
+                            postId = top.id,
+                            onBack = back,
+                            onOpenProfile = ::openProfile,
+                            onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                        )
+                        Dest.NewPost -> NewPostScreen(
+                            net = net,
+                            initial = pending?.uri,
+                            onBack = { pending = null; back() },
+                            onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
+                        )
+                        is Dest.Chat -> ChatScreen(net, top.hash, back, ::openProfile)
+                        is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
+                        Dest.Bubbles -> BubblesScreen(net, back)
+                        Dest.Visits -> VisitsScreen(net, back, ::openProfile)
+                        Dest.Growth -> GrowthScreen(net, back)
+                        is Dest.Story, Dest.Camera, Dest.StageEdit -> {}
+                    }
+                } else {
+                    when (tab) {
+                        0 -> FeedScreen(
+                            net = net,
+                            refreshKey = refreshTick,
+                            onOpen = ::openProfile,
+                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                            onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                            onOpenStory = { stack.add(Dest.Story(it)) },
+                            onOpenCamera = { stack.add(Dest.Camera) },
+                        )
+                        1 -> SearchScreen(net, ::openProfile)
+                        2 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
+                        else -> MeScreen(
+                            net = net,
+                            onUsers = { stack.add(Dest.Users(it)) },
+                            onBubbles = { stack.add(Dest.Bubbles) },
+                            onVisits = { stack.add(Dest.Visits) },
+                            onGrowth = { stack.add(Dest.Growth) },
+                            onSignOut = onSignOut,
+                            refreshKey = refreshTick,
+                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                            onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                        )
+                    }
                 }
             }
         }

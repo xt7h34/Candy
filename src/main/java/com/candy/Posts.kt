@@ -47,6 +47,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,7 +58,6 @@ import kotlin.math.max
 
 private const val CAPTION_LIMIT = 500
 private const val COMMENT_LIMIT = 300
-private const val STORY_CAPTION_LIMIT = 150
 
 // ───────────────────────── Pictures ─────────────────────────
 
@@ -220,12 +220,20 @@ fun PostCard(net: Net, post: Post, onOpenPost: (String) -> Unit, onOpenProfile: 
                     Muted(post.ownerHash)
                 }
             }
-            PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
+            if (post.hasImage) {
+                PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
+            } else if (post.caption.isNotBlank()) {
+                Text(
+                    post.caption,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth().clickable { onOpenPost(post.id) }.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
             Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 LikeButton(net, post.id, post.liked, post.likes)
                 TextButton(onClick = { onOpenPost(post.id) }) { Text("💬 " + post.comments) }
             }
-            if (post.caption.isNotBlank()) {
+            if (post.hasImage && post.caption.isNotBlank()) {
                 Text(
                     post.caption,
                     style = MaterialTheme.typography.bodyMedium,
@@ -236,7 +244,27 @@ fun PostCard(net: Net, post: Post, onOpenPost: (String) -> Unit, onOpenProfile: 
     }
 }
 
-/** The photos of one person as a grid of squares. [hash] is null for your own. */
+/** A track with words only, shown as a coloured square in the grid. */
+@Composable
+private fun TextTile(p: Post, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(8.dp),
+    ) {
+        Text(
+            p.caption,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            maxLines = 7,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** The tracks of one person as a grid of squares. [hash] is null for your own. */
 @Composable
 fun PostsSection(net: Net, hash: String?, refreshKey: Int, onOpenPost: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -275,7 +303,11 @@ fun PostsSection(net: Net, hash: String?, refreshKey: Int, onOpenPost: (String) 
         for (row in posts.chunked(3)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (p in row) {
-                    PostImage(p.id, net.token, true, 1f, Modifier.weight(1f).clickable { onOpenPost(p.id) })
+                    if (p.hasImage) {
+                        PostImage(p.id, net.token, true, 1f, Modifier.weight(1f).clickable { onOpenPost(p.id) })
+                    } else {
+                        TextTile(p, Modifier.weight(1f).clickable { onOpenPost(p.id) })
+                    }
                 }
                 for (i in row.size until 3) Spacer(Modifier.weight(1f))
             }
@@ -305,8 +337,8 @@ fun ReportDialog(onSend: (String) -> Unit, onDismiss: () -> Unit) {
 // ───────────────────────── New post ─────────────────────────
 
 @Composable
-fun NewPostScreen(net: Net, story: Boolean, onBack: () -> Unit, onPosted: () -> Unit) {
-    val captionLimit = if (story) STORY_CAPTION_LIMIT else CAPTION_LIMIT
+fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> Unit) {
+    val captionLimit = CAPTION_LIMIT
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var jpeg by remember { mutableStateOf<ByteArray?>(null) }
@@ -314,6 +346,19 @@ fun NewPostScreen(net: Net, story: Boolean, onBack: () -> Unit, onPosted: () -> 
     var caption by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+
+    // a photo that came from the camera or the gallery screen
+    LaunchedEffect(initial) {
+        if (initial != null) {
+            val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, initial) }
+            if (bytes == null) {
+                error = ctx.getString(R.string.avatar_unreadable)
+            } else {
+                jpeg = bytes
+                preview = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+            }
+        }
+    }
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -331,7 +376,7 @@ fun NewPostScreen(net: Net, story: Boolean, onBack: () -> Unit, onPosted: () -> 
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenHeader(stringResource(if (story) R.string.story_new else R.string.feed_new_post), onBack)
+        ScreenHeader(stringResource(R.string.feed_new_post), onBack)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val shown = preview
             if (shown != null) {
@@ -355,21 +400,19 @@ fun NewPostScreen(net: Net, story: Boolean, onBack: () -> Unit, onPosted: () -> 
             Button(
                 onClick = {
                     val bytes = jpeg
-                    if (bytes != null) {
+                    if (bytes != null || caption.isNotBlank()) {
                         scope.launch {
                             busy = true
                             error = ""
-                            val body = JSONObject()
-                                .put("image", Base64.encodeToString(bytes, Base64.NO_WRAP))
-                                .put("caption", caption.trim())
-                            if (story) body.put("story", true)
+                            val body = JSONObject().put("caption", caption.trim())
+                            if (bytes != null) body.put("image", Base64.encodeToString(bytes, Base64.NO_WRAP))
                             val r = net.post("/candy/post", body)
                             busy = false
                             if (r.ok) onPosted() else error = r.message(ctx)
                         }
                     }
                 },
-                enabled = !busy && jpeg != null,
+                enabled = !busy && (jpeg != null || caption.isNotBlank()),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.prof_post)) }
         }
@@ -444,7 +487,7 @@ fun PostScreen(
                         Muted(p.ownerHash)
                     }
                 }
-                PostImage(p.id, net.token, false, aspectOf(p))
+                if (p.hasImage) PostImage(p.id, net.token, false, aspectOf(p))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     LikeButton(net, p.id, p.liked, p.likes)
                     if (p.mine) {
