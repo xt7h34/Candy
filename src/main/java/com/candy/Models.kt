@@ -162,3 +162,59 @@ fun JSONArray?.toComments(): List<Comment> {
     }
     return out
 }
+
+/** One picture in a story. */
+class StoryItem(
+    val id: String,
+    val at: Long,
+    val exp: Long,
+    val caption: String,
+    val seen: Boolean,
+    val views: Int,
+)
+
+/** All the live stories of one person. */
+class StoryGroup(
+    val ownerName: String,
+    val ownerHash: String,
+    val mine: Boolean,
+    val allSeen: Boolean,
+    val items: List<StoryItem>,
+)
+
+fun JSONArray?.toStoryGroups(): List<StoryGroup> {
+    if (this == null) return emptyList()
+    val out = ArrayList<StoryGroup>()
+    for (i in 0 until length()) {
+        val o = optJSONObject(i) ?: continue
+        val owner = o.optJSONObject("owner")
+        val items = ArrayList<StoryItem>()
+        val arr = o.optJSONArray("items")
+        if (arr != null) {
+            for (j in 0 until arr.length()) {
+                val s = arr.optJSONObject(j) ?: continue
+                items.add(
+                    StoryItem(
+                        id = s.optString("id"),
+                        at = s.optLong("at"),
+                        exp = s.optLong("exp"),
+                        caption = s.optString("caption"),
+                        seen = s.optBoolean("seen"),
+                        views = s.optInt("views"),
+                    ),
+                )
+            }
+        }
+        if (items.isEmpty()) continue
+        out.add(
+            StoryGroup(
+                ownerName = owner?.optString("name").orEmpty(),
+                ownerHash = owner?.optString("hash").orEmpty(),
+                mine = o.optBoolean("mine"),
+                allSeen = o.optBoolean("allSeen"),
+                items = items,
+            ),
+        )
+    }
+    return out
+}

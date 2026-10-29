@@ -45,9 +45,12 @@ fun FeedScreen(
     onOpen: (String) -> Unit,
     onOpenPost: (String) -> Unit,
     onNewPost: () -> Unit,
+    onOpenStory: (String) -> Unit,
+    onNewStory: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    var stories by remember { mutableStateOf<List<StoryGroup>>(emptyList()) }
     var drifts by remember { mutableStateOf<List<Drift>>(emptyList()) }
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var next by remember { mutableStateOf<Long?>(null) }
@@ -77,6 +80,8 @@ fun FeedScreen(
         } else {
             error = r.message(ctx)
         }
+        val s = net.get("/candy/stories")
+        if (s.ok) stories = s.body?.optJSONArray("groups").toStoryGroups()
         loadPosts(null)
         loading = false
     }
@@ -105,6 +110,7 @@ fun FeedScreen(
                 }
             }
         }
+        item { StoriesRow(net.token, stories, onOpenStory, onNewStory) }
         item { ErrorText(error) }
         if (drifts.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.feed_title)) }

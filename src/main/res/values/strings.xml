@@ -134,4 +134,9 @@
     <string name="upd_auto">Check automatically</string>
     <string name="handoff_signing_in">Signing you in with your Kanade account...</string>
     <string name="auth_from_kanade">Already use Kanade? Open Candy from the Kanade app and you are in with one tap.</string>
+    <string name="story_yours">Your story</string>
+    <string name="story_new">New story</string>
+    <string name="story_viewers_title">Seen by</string>
+    <string name="story_no_viewers">No one yet.</string>
+    <string name="story_delete_confirm">Delete this story?</string>
 </resources>

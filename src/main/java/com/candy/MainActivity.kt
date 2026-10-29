@@ -146,6 +146,8 @@ sealed class Dest {
     object Growth : Dest()
     class OpenPost(val id: String) : Dest()
     object NewPost : Dest()
+    class Story(val hash: String) : Dest()
+    object NewStory : Dest()
 }
 
 @Composable
@@ -209,8 +211,20 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         onOpenProfile = ::openProfile,
                         onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
                     )
+                    is Dest.Story -> StoryViewer(
+                        net = net,
+                        hash = top.hash,
+                        onBack = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                    )
+                    Dest.NewStory -> NewPostScreen(
+                        net = net,
+                        story = true,
+                        onBack = back,
+                        onPosted = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                    )
                     Dest.NewPost -> NewPostScreen(
                         net = net,
+                        story = false,
                         onBack = back,
                         onPosted = { refreshTick++; stack.removeAt(stack.lastIndex) },
                     )
@@ -227,6 +241,8 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         onOpen = ::openProfile,
                         onOpenPost = { stack.add(Dest.OpenPost(it)) },
                         onNewPost = { stack.add(Dest.NewPost) },
+                        onOpenStory = { stack.add(Dest.Story(it)) },
+                        onNewStory = { stack.add(Dest.NewStory) },
                     )
                     1 -> SearchScreen(net, ::openProfile)
                     else -> MeScreen(

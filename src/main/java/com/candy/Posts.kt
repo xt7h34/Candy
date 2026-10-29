@@ -57,6 +57,7 @@ import kotlin.math.max
 
 private const val CAPTION_LIMIT = 500
 private const val COMMENT_LIMIT = 300
+private const val STORY_CAPTION_LIMIT = 150
 
 // ───────────────────────── Pictures ─────────────────────────
 
@@ -304,7 +305,8 @@ fun ReportDialog(onSend: (String) -> Unit, onDismiss: () -> Unit) {
 // ───────────────────────── New post ─────────────────────────
 
 @Composable
-fun NewPostScreen(net: Net, onBack: () -> Unit, onPosted: () -> Unit) {
+fun NewPostScreen(net: Net, story: Boolean, onBack: () -> Unit, onPosted: () -> Unit) {
+    val captionLimit = if (story) STORY_CAPTION_LIMIT else CAPTION_LIMIT
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var jpeg by remember { mutableStateOf<ByteArray?>(null) }
@@ -329,7 +331,7 @@ fun NewPostScreen(net: Net, onBack: () -> Unit, onPosted: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenHeader(stringResource(R.string.feed_new_post), onBack)
+        ScreenHeader(stringResource(if (story) R.string.story_new else R.string.feed_new_post), onBack)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val shown = preview
             if (shown != null) {
@@ -344,10 +346,10 @@ fun NewPostScreen(net: Net, onBack: () -> Unit, onPosted: () -> Unit) {
                 Text(stringResource(if (shown == null) R.string.post_pick else R.string.avatar_change))
             }
             Field(
-                stringResource(R.string.post_caption_hint), caption, { caption = it.take(CAPTION_LIMIT) },
+                stringResource(R.string.post_caption_hint), caption, { caption = it.take(captionLimit) },
                 singleLine = false,
             )
-            Muted(stringResource(R.string.prof_count, caption.length, CAPTION_LIMIT))
+            Muted(stringResource(R.string.prof_count, caption.length, captionLimit))
             ErrorText(error)
             if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Button(
@@ -360,6 +362,7 @@ fun NewPostScreen(net: Net, onBack: () -> Unit, onPosted: () -> Unit) {
                             val body = JSONObject()
                                 .put("image", Base64.encodeToString(bytes, Base64.NO_WRAP))
                                 .put("caption", caption.trim())
+                            if (story) body.put("story", true)
                             val r = net.post("/candy/post", body)
                             busy = false
                             if (r.ok) onPosted() else error = r.message(ctx)

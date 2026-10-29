@@ -134,4 +134,9 @@
     <string name="upd_auto">فحص تلقائي</string>
     <string name="handoff_signing_in">بنسجّل دخولك بحساب كندا...</string>
     <string name="auth_from_kanade">بتستخدم كندا؟ افتح كاندي من تطبيق كندا وهتدخل بضغطة واحدة.</string>
+    <string name="story_yours">قصتك</string>
+    <string name="story_new">ستوري جديد</string>
+    <string name="story_viewers_title">اللي شافوها</string>
+    <string name="story_no_viewers">لسه محدش.</string>
+    <string name="story_delete_confirm">تمسح الستوري دي؟</string>
 </resources>
