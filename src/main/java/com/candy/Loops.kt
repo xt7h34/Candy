@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -159,6 +160,7 @@ private fun LoopPage(
     var poster by remember(loop.id) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(loop.id) { mutableStateOf(false) }
     var playing by remember(loop.id) { mutableStateOf(true) }
+    var sending by remember(loop.id) { mutableStateOf(false) }
 
     LaunchedEffect(loop.id) { poster = MediaCache.load(net.token, loop.id, false) }
 
@@ -253,9 +255,65 @@ private fun LoopPage(
         ) {
             LikeButton(net, loop.id, loop.liked, loop.likes)
             TextButton(onClick = { onOpenComments(loop.id) }) { Text("💬 " + loop.comments) }
+            TextButton(onClick = { sending = true }) { Text("📨") }
             Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
         }
+
+        if (sending) SendLoopDialog(net, loop.id) { sending = false }
     }
+}
+
+/** Send a loop to someone in a message. People you have a Flow with are on top: it counts for today. */
+@Composable
+private fun SendLoopDialog(net: Net, loopId: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var flows by remember { mutableStateOf<List<FlowInfo>>(emptyList()) }
+    var typed by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val r = net.get("/candy/flows")
+        if (r.ok) flows = r.body?.optJSONArray("flows").toFlows().filter { it.status == "active" }
+    }
+
+    fun sendTo(hash: String) {
+        scope.launch {
+            busy = true
+            error = ""
+            val r = net.post("/candy/dm/send", JSONObject().put("hash", bareHash(hash)).put("loop", loopId))
+            busy = false
+            if (r.ok) {
+                val streak = r.body?.optJSONObject("flow")?.optInt("streak") ?: 0
+                done = ctx.getString(R.string.loop_sent) + if (streak > 0) "  🔥 $streak" else ""
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.loop_send_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (f in flows) {
+                    TextButton(onClick = { sendTo(f.peerHash) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("🔥 " + f.streak + "  " + f.peerName.ifBlank { f.peerHash })
+                    }
+                }
+                Field(stringResource(R.string.loop_send_hash), typed, { typed = it })
+                if (done.isNotEmpty()) Text(done, color = MaterialTheme.colorScheme.primary)
+                ErrorText(error)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { sendTo(typed) }, enabled = !busy && typed.isNotBlank()) { Text(stringResource(R.string.post_send)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
 }
 
 /** Someone's loops as a grid of squares with a play mark. */

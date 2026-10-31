@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -175,12 +174,9 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
         val r = net.get("/candy/dm/unread")
         if (r.ok) unread = r.body?.optInt("count") ?: 0
     }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(20_000)
-            val r = net.get("/candy/dm/unread")
-            if (r.ok) unread = r.body?.optInt("count") ?: 0
-        }
+    PollingEffect(Unit, 60_000L) {
+        val r = net.get("/candy/dm/unread")
+        if (r.ok) unread = r.body?.optInt("count") ?: 0
     }
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }
@@ -327,7 +323,13 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             onBack = { pending = null; back() },
                             onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
                         )
-                        is Dest.Chat -> ChatScreen(net, top.hash, back, ::openProfile)
+                        is Dest.Chat -> ChatScreen(
+                            net = net,
+                            hash = top.hash,
+                            onBack = back,
+                            onOpenProfile = ::openProfile,
+                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                        )
                         is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
                         Dest.Bubbles -> BubblesScreen(net, back)
                         Dest.Visits -> VisitsScreen(net, back, ::openProfile)

@@ -167,4 +167,23 @@
     <string name="loops_empty">مفيش لوبات لسه. كن أول واحد: دوس + واختار لوب.</string>
     <string name="prof_loops">اللوبات</string>
     <string name="loop_views">%1$d مشاهدة</string>
+    <string name="flow_title">الـ Flows</string>
+    <string name="flow_start">ابدأ Flow</string>
+    <string name="flow_sent">طلب الـ Flow اتبعت. مستنيينه يقبل.</string>
+    <string name="flow_incoming">%1$s عايز يبدأ Flow معاك.</string>
+    <string name="flow_accept">قبول</string>
+    <string name="flow_decline">رفض</string>
+    <string name="flow_cancel">إلغاء الطلب</string>
+    <string name="flow_end">إنهاء الـ Flow</string>
+    <string name="flow_you_sent">انت بعتّ لوب النهاردة</string>
+    <string name="flow_you_not">لسه ما بعتّش لوب النهاردة</string>
+    <string name="flow_they_sent">%1$s بعت لوب النهاردة</string>
+    <string name="flow_they_not">%1$s لسه ما بعتش لوب النهاردة</string>
+    <string name="flow_at_risk">ابعتوا لبعض لوب قبل ما اليوم يخلص (باقي %1$d ساعة) وإلا العدّاد يتصفّر.</string>
+    <string name="flow_hint">ابعت لوب من تبويب اللوب بزر الإرسال.</string>
+    <string name="flow_rule">كل يوم الاتنين بيبعتوا لبعض لوب مختلف.</string>
+    <string name="chat_loop_gone">اللوب ده مش متاح.</string>
+    <string name="loop_send_title">ابعت اللوب ده لـ</string>
+    <string name="loop_send_hash">أو اكتب هاش</string>
+    <string name="loop_sent">اتبعت</string>
 </resources>

@@ -13,13 +13,19 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 
 @Composable
 fun Field(
@@ -97,4 +103,21 @@ fun timeLeft(c: Context, expiresAt: Long): String {
     val h = mins / 60
     val m = mins % 60
     return if (h > 0) c.getString(R.string.time_left_hm, h, m) else c.getString(R.string.time_left_m, maxOf(m, 1))
+}
+
+/**
+ * Runs [block] now and then every [intervalMs], but only while the app is on screen.
+ * When the app goes to the background it stops, so it does not waste the connection.
+ */
+@Composable
+fun PollingEffect(key: Any?, intervalMs: Long, block: suspend () -> Unit) {
+    val owner = LocalContext.current as LifecycleOwner
+    LaunchedEffect(key) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                block()
+                delay(intervalMs)
+            }
+        }
+    }
 }

@@ -167,4 +167,23 @@
     <string name="loops_empty">No loops yet. Be the first: tap + and choose Loop.</string>
     <string name="prof_loops">Loops</string>
     <string name="loop_views">%1$d views</string>
+    <string name="flow_title">Flows</string>
+    <string name="flow_start">Start a Flow</string>
+    <string name="flow_sent">Flow request sent. Waiting for them.</string>
+    <string name="flow_incoming">%1$s wants to start a Flow with you.</string>
+    <string name="flow_accept">Accept</string>
+    <string name="flow_decline">Decline</string>
+    <string name="flow_cancel">Cancel request</string>
+    <string name="flow_end">End Flow</string>
+    <string name="flow_you_sent">You sent a loop today</string>
+    <string name="flow_you_not">You have not sent a loop today</string>
+    <string name="flow_they_sent">%1$s sent a loop today</string>
+    <string name="flow_they_not">%1$s has not sent a loop today</string>
+    <string name="flow_at_risk">Send each other a loop before the day ends (%1$d h left) or the streak resets.</string>
+    <string name="flow_hint">Send a loop from the Loops tab with the send button.</string>
+    <string name="flow_rule">Each day, both of you send the other a different loop.</string>
+    <string name="chat_loop_gone">This loop is no longer available.</string>
+    <string name="loop_send_title">Send this loop to</string>
+    <string name="loop_send_hash">Or type a hash</string>
+    <string name="loop_sent">Sent</string>
 </resources>

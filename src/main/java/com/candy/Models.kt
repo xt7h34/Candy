@@ -241,3 +241,42 @@ fun JSONArray?.toStoryGroups(): List<StoryGroup> {
     }
     return out
 }
+
+/** A Flow with one person: you send each other a loop every day to keep the streak. */
+class FlowInfo(
+    val peerName: String,
+    val peerHash: String,
+    val status: String,
+    val incoming: Boolean,
+    val streak: Int,
+    val best: Int,
+    val iSent: Boolean,
+    val theySent: Boolean,
+    val doneToday: Boolean,
+    val atRisk: Boolean,
+    val msLeft: Long,
+)
+
+fun JSONObject.toFlow(): FlowInfo {
+    val peer = optJSONObject("peer")
+    return FlowInfo(
+        peerName = peer?.optString("name").orEmpty(),
+        peerHash = peer?.optString("hash").orEmpty(),
+        status = optString("status"),
+        incoming = optBoolean("incoming"),
+        streak = optInt("streak"),
+        best = optInt("best"),
+        iSent = optBoolean("iSent"),
+        theySent = optBoolean("theySent"),
+        doneToday = optBoolean("doneToday"),
+        atRisk = optBoolean("atRisk"),
+        msLeft = optLong("msLeft"),
+    )
+}
+
+fun JSONArray?.toFlows(): List<FlowInfo> {
+    if (this == null) return emptyList()
+    val out = ArrayList<FlowInfo>()
+    for (i in 0 until length()) optJSONObject(i)?.let { out.add(it.toFlow()) }
+    return out
+}
