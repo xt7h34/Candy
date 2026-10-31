@@ -63,6 +63,8 @@ class Picked(val uri: Uri, val isVideo: Boolean, val fromCamera: Boolean)
 
 private const val DEST_TRACK = "track"
 private const val DEST_STAGE = "stage"
+private const val DEST_LOOP = "loop"
+private const val MAX_LOOP_MS = 30_000L
 private const val MAX_RECORD_MS = 15_000L
 
 private fun hasPermission(c: android.content.Context, p: String): Boolean =
@@ -100,6 +102,8 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
             val isVideo = ctx.contentResolver.getType(uri).orEmpty().startsWith("video/")
             if (isVideo && dest == DEST_TRACK) {
                 message = ctx.getString(R.string.cam_video_track)
+            } else if (!isVideo && dest == DEST_LOOP) {
+                message = ctx.getString(R.string.cam_loop_video)
             } else {
                 onPicked(Picked(uri, isVideo, false), dest)
             }
@@ -174,7 +178,7 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
         val file = File(ctx.cacheDir, "cap_${System.currentTimeMillis()}.mp4")
         var pending = capture.output.prepareRecording(
             ctx,
-            FileOutputOptions.Builder(file).setDurationLimitMillis(MAX_RECORD_MS).build(),
+            FileOutputOptions.Builder(file).setDurationLimitMillis(if (dest == DEST_LOOP) MAX_LOOP_MS else MAX_RECORD_MS).build(),
         )
         if (hasAudio) pending = pending.withAudioEnabled()
         recording = pending.start(executor) { event ->
@@ -252,8 +256,8 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
                                     tryAwaitRelease()
                                     recording?.stop()
                                 },
-                                onTap = { takePhoto() },
-                                onLongPress = { if (dest == DEST_STAGE) startVideo() },
+                                onTap = { if (dest == DEST_LOOP) message = ctx.getString(R.string.cam_loop_video) else takePhoto() },
+                                onLongPress = { if (dest != DEST_TRACK) startVideo() },
                             )
                         },
                 )
@@ -261,7 +265,7 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((id, label) in listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage)) {
+                for ((id, label) in listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage, DEST_LOOP to R.string.cam_loop)) {
                     val selected = dest == id
                     TextButton(onClick = { dest = id }) {
                         Text(

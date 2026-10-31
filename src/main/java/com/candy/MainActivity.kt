@@ -153,6 +153,8 @@ sealed class Dest {
     class Chat(val hash: String) : Dest()
     object Camera : Dest()
     object StageEdit : Dest()
+    object LoopEdit : Dest()
+    class LoopPlayer(val hash: String, val startId: String) : Dest()
 }
 
 @Composable
@@ -187,7 +189,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     fun openProfile(hash: String) {
         if (bareHash(hash).equals(bareHash(myHash), ignoreCase = true)) {
             stack.clear()
-            tab = 3
+            tab = 4
         } else {
             stack.add(Dest.Profile(hash))
         }
@@ -195,7 +197,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
 
     val top = if (stack.isEmpty()) null else stack[stack.lastIndex]
     val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
-    val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.Story
+    val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.LoopEdit || top is Dest.Story || top is Dest.LoopPlayer
 
     if (fullScreen) {
         // the camera, the editor and the stage viewer use the whole screen
@@ -206,7 +208,13 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                     onPicked = { picked, dest ->
                         pending = picked
                         stack.removeAt(stack.lastIndex)
-                        stack.add(if (dest == "stage") Dest.StageEdit else Dest.NewPost)
+                        stack.add(
+                            when (dest) {
+                                "stage" -> Dest.StageEdit
+                                "loop" -> Dest.LoopEdit
+                                else -> Dest.NewPost
+                            },
+                        )
                     },
                 )
                 is Dest.StageEdit -> {
@@ -217,11 +225,35 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         StageEditorScreen(
                             net = net,
                             picked = p,
+                            loop = false,
                             onBack = { pending = null; back() },
                             onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
                         )
                     }
                 }
+                is Dest.LoopEdit -> {
+                    val p = pending
+                    if (p == null) {
+                        LaunchedEffect(Unit) { back() }
+                    } else {
+                        StageEditorScreen(
+                            net = net,
+                            picked = p,
+                            loop = true,
+                            onBack = { pending = null; back() },
+                            onPosted = { pending = null; refreshTick++; tab = 1; stack.removeAt(stack.lastIndex) },
+                        )
+                    }
+                }
+                is Dest.LoopPlayer -> LoopsScreen(
+                    net = net,
+                    hash = top.hash,
+                    startId = top.startId,
+                    refreshKey = refreshTick,
+                    onBack = back,
+                    onOpenProfile = ::openProfile,
+                    onOpenComments = { stack.add(Dest.OpenPost(it)) },
+                )
                 is Dest.Story -> StoryViewer(
                     net = net,
                     hash = top.hash,
@@ -244,20 +276,26 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         NavigationBarItem(
                             selected = tab == 1,
                             onClick = { tab = 1 },
-                            icon = { Text("🔎") },
-                            label = { Text(stringResource(R.string.nav_search)) },
+                            icon = { Text("🎬") },
+                            label = { Text(stringResource(R.string.nav_loops)) },
                         )
                         NavigationBarItem(
                             selected = tab == 2,
                             onClick = { tab = 2 },
+                            icon = { Text("🔎") },
+                            label = { Text(stringResource(R.string.nav_search)) },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 3,
+                            onClick = { tab = 3 },
                             icon = {
                                 BadgedBox(badge = { if (unread > 0) Badge { Text(unread.toString()) } }) { Text("💬") }
                             },
                             label = { Text(stringResource(R.string.nav_chats)) },
                         )
                         NavigationBarItem(
-                            selected = tab == 3,
-                            onClick = { tab = 3 },
+                            selected = tab == 4,
+                            onClick = { tab = 4 },
                             icon = { Text("👤") },
                             label = { Text(stringResource(R.string.nav_me)) },
                         )
@@ -274,6 +312,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             onBack = back,
                             onOpenPost = { stack.add(Dest.OpenPost(it)) },
                             onMessage = { stack.add(Dest.Chat(it)) },
+                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
                         )
                         is Dest.OpenPost -> PostScreen(
                             net = net,
@@ -293,7 +332,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         Dest.Bubbles -> BubblesScreen(net, back)
                         Dest.Visits -> VisitsScreen(net, back, ::openProfile)
                         Dest.Growth -> GrowthScreen(net, back)
-                        is Dest.Story, Dest.Camera, Dest.StageEdit -> {}
+                        is Dest.Story, Dest.Camera, Dest.StageEdit, Dest.LoopEdit, is Dest.LoopPlayer -> {}
                     }
                 } else {
                     when (tab) {
@@ -306,8 +345,17 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             onOpenStory = { stack.add(Dest.Story(it)) },
                             onOpenCamera = { stack.add(Dest.Camera) },
                         )
-                        1 -> SearchScreen(net, ::openProfile)
-                        2 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
+                        1 -> LoopsScreen(
+                            net = net,
+                            hash = null,
+                            startId = null,
+                            refreshKey = refreshTick,
+                            onBack = null,
+                            onOpenProfile = ::openProfile,
+                            onOpenComments = { stack.add(Dest.OpenPost(it)) },
+                        )
+                        2 -> SearchScreen(net, ::openProfile)
+                        3 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
                         else -> MeScreen(
                             net = net,
                             onUsers = { stack.add(Dest.Users(it)) },
@@ -318,6 +366,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             refreshKey = refreshTick,
                             onOpenPost = { stack.add(Dest.OpenPost(it)) },
                             onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
                         )
                     }
                 }

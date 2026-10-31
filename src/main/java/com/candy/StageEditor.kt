@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -130,7 +131,7 @@ private fun videoCover(c: android.content.Context, uri: Uri): ByteArray? = try {
  * choose its colour and size. The text is kept as text (not burned in), so it also works on videos.
  */
 @Composable
-fun StageEditorScreen(net: Net, picked: Picked, onBack: () -> Unit, onPosted: () -> Unit) {
+fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Unit, onPosted: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val overlays = remember { mutableStateListOf<Overlay>() }
@@ -139,6 +140,7 @@ fun StageEditorScreen(net: Net, picked: Picked, onBack: () -> Unit, onPosted: ()
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var error by remember { mutableStateOf("") }
+    var caption by remember { mutableStateOf("") }
 
     LaunchedEffect(picked.uri) {
         if (!picked.isVideo) {
@@ -154,7 +156,17 @@ fun StageEditorScreen(net: Net, picked: Picked, onBack: () -> Unit, onPosted: ()
             busy = true
             error = ""
             progress = 0f
-            val body = JSONObject().put("story", true).put("overlays", overlays.toList().toJson())
+            val body = JSONObject()
+            if (loop) {
+                body.put("loop", true).put("caption", caption.trim())
+            } else {
+                body.put("story", true).put("overlays", overlays.toList().toJson())
+            }
+            if (loop && !picked.isVideo) {
+                busy = false
+                error = ctx.getString(R.string.cam_loop_video)
+                return@launch
+            }
             if (picked.isVideo) {
                 val ok = withContext(Dispatchers.IO) { videoLooksOk(ctx, picked.uri) }
                 if (!ok) {
@@ -248,8 +260,10 @@ fun StageEditorScreen(net: Net, picked: Picked, onBack: () -> Unit, onPosted: ()
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             TextButton(onClick = onBack, enabled = !busy) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge) }
-            TextButton(onClick = { editing = -2 }, enabled = !busy && overlays.size < 8) {
-                Text("Aa", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            if (!loop) {
+                TextButton(onClick = { editing = -2 }, enabled = !busy && overlays.size < 8) {
+                    Text("Aa", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                }
             }
         }
 
@@ -264,8 +278,19 @@ fun StageEditorScreen(net: Net, picked: Picked, onBack: () -> Unit, onPosted: ()
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (error.isNotEmpty()) Text(error, color = Color(0xFFFFB4AB))
+            if (loop) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(8.dp),
+                ) {
+                    Field(stringResource(R.string.loop_caption_hint), caption, { caption = it.take(300) }, singleLine = false)
+                }
+            }
             Button(onClick = { share() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.stage_share))
+                Text(stringResource(if (loop) R.string.loop_share else R.string.stage_share))
             }
         }
     }

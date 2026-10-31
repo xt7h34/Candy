@@ -76,7 +76,14 @@ private fun ProfileInfo(u: CUser) {
 
 /** Someone else's profile, with a follow button and the drifts you can see. */
 @Composable
-fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (String) -> Unit, onMessage: (String) -> Unit) {
+fun ProfileScreen(
+    net: Net,
+    hash: String,
+    onBack: () -> Unit,
+    onOpenPost: (String) -> Unit,
+    onMessage: (String) -> Unit,
+    onOpenLoop: (String, String) -> Unit,
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var user by remember { mutableStateOf<CUser?>(null) }
@@ -149,6 +156,7 @@ fun ProfileScreen(net: Net, hash: String, onBack: () -> Unit, onOpenPost: (Strin
                     for (d in drifts) DriftCard(d, net.token, null)
                 }
                 PostsSection(net, u.hash, reload, onOpenPost)
+                LoopsSection(net, u.hash, reload) { id -> onOpenLoop(u.hash, id) }
                 if (reporting) {
                     ReportDialog(
                         onSend = { reason ->
@@ -203,6 +211,7 @@ fun MeScreen(
     refreshKey: Int,
     onOpenPost: (String) -> Unit,
     onNewPost: () -> Unit,
+    onOpenLoop: (String, String) -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -253,6 +262,7 @@ fun MeScreen(
                 Text(stringResource(R.string.feed_new_post))
             }
             PostsSection(net, null, reload + refreshKey, onOpenPost)
+            LoopsSection(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
 
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = onBubbles, modifier = Modifier.fillMaxWidth()) {

@@ -33,6 +33,7 @@
     <string name="nav_search">بحث</string>
     <string name="nav_me">أنا</string>
     <string name="nav_chats">الرسايل</string>
+    <string name="nav_loops">لوب</string>
     <string name="feed_title">الدريفتس</string>
     <string name="feed_empty">مفيش حاجة لسه. تابع ناس عشان تشوف التراكات والدريفتس بتاعتهم.</string>
     <string name="feed_mine">الدريفتس بتاعتك</string>
@@ -142,7 +143,7 @@
     <string name="story_delete_confirm">تمسح الستيج ده؟</string>
     <string name="cam_track">تراك</string>
     <string name="cam_stage">ستيج</string>
-    <string name="cam_hint">دوس للصورة. استمر للفيديو (للستيج بس).</string>
+    <string name="cam_hint">دوس للصورة. استمر للفيديو (للستيج واللوب).</string>
     <string name="cam_permission">اسمح بالكاميرا عشان تصوّر من هنا.</string>
     <string name="cam_allow">اسمح بالكاميرا</string>
     <string name="cam_video_track">الفيديو للستيج. اختار ستيج، أو اختار صورة للتراك.</string>
@@ -159,4 +160,11 @@
     <string name="chat_limited">استخدمت رسالتين. تابع %1$s عشان تكمّل.</string>
     <string name="chat_remaining">فاضلك %1$d رسالة قبل ما تحتاج تتابعه.</string>
     <string name="prof_message">رسالة</string>
+    <string name="cam_loop">لوب</string>
+    <string name="cam_loop_video">اللوب فيديو. استمر على الزر عشان تصوّر، أو اختار فيديو.</string>
+    <string name="loop_share">انشر في اللوب</string>
+    <string name="loop_caption_hint">اكتب كابشن (اختياري)</string>
+    <string name="loops_empty">مفيش لوبات لسه. كن أول واحد: دوس + واختار لوب.</string>
+    <string name="prof_loops">اللوبات</string>
+    <string name="loop_views">%1$d مشاهدة</string>
 </resources>
