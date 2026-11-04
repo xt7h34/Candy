@@ -336,7 +336,6 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                                 hash = top.hash,
                                 onBack = back,
                                 onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                                onOpenComments = { commentsFor = it },
                                 onMessage = { stack.add(Dest.Chat(it)) },
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
                             )
