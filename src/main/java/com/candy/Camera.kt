@@ -64,6 +64,7 @@ class Picked(val uri: Uri, val isVideo: Boolean, val fromCamera: Boolean)
 private const val DEST_TRACK = "track"
 private const val DEST_STAGE = "stage"
 private const val DEST_LOOP = "loop"
+private const val DEST_FLARE = "flare"
 private const val MAX_LOOP_MS = 30_000L
 private const val MAX_RECORD_MS = 15_000L
 
@@ -75,14 +76,20 @@ private fun hasPermission(c: android.content.Context, p: String): Boolean =
  * Under it you choose where it goes: Track or Stage. The square at the bottom left picks from the gallery.
  */
 @Composable
-fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
+fun CameraScreen(
+    startDest: String,
+    flareLocked: Boolean,
+    onBack: () -> Unit,
+    onMemories: () -> Unit,
+    onPicked: (Picked, String) -> Unit,
+) {
     val ctx = LocalContext.current
     val owner = ctx as LifecycleOwner
     val executor = remember { ContextCompat.getMainExecutor(ctx) }
 
     var hasCamera by remember { mutableStateOf(hasPermission(ctx, Manifest.permission.CAMERA)) }
     var hasAudio by remember { mutableStateOf(hasPermission(ctx, Manifest.permission.RECORD_AUDIO)) }
-    var dest by remember { mutableStateOf(DEST_STAGE) }
+    var dest by remember { mutableStateOf(startDest) }
     var lens by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var message by remember { mutableStateOf("") }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
@@ -210,6 +217,9 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             TextButton(onClick = onBack) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge) }
+            TextButton(onClick = onMemories) {
+                Text("🗂️ " + stringResource(R.string.cam_memories), color = Color.White)
+            }
             TextButton(
                 onClick = {
                     lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
@@ -234,14 +244,17 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    Box(
-                        Modifier
-                            .size(52.dp)
-                            .border(2.dp, Color.White, RoundedCornerShape(10.dp))
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { gallery.launch(arrayOf("image/*", "video/*")) },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("🖼️", style = MaterialTheme.typography.titleLarge) }
+                    // a Flare must be taken here, so there is no gallery for it
+                    if (dest != DEST_FLARE) {
+                        Box(
+                            Modifier
+                                .size(52.dp)
+                                .border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { gallery.launch(arrayOf("image/*", "video/*")) },
+                            contentAlignment = Alignment.Center,
+                        ) { Text("🖼️", style = MaterialTheme.typography.titleLarge) }
+                    }
                 }
                 Box(
                     Modifier
@@ -265,7 +278,12 @@ fun CameraScreen(onBack: () -> Unit, onPicked: (Picked, String) -> Unit) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((id, label) in listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage, DEST_LOOP to R.string.cam_loop)) {
+                val choices = if (flareLocked) {
+                    listOf(DEST_FLARE to R.string.cam_flare)
+                } else {
+                    listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage, DEST_LOOP to R.string.cam_loop, DEST_FLARE to R.string.cam_flare)
+                }
+                for ((id, label) in choices) {
                     val selected = dest == id
                     TextButton(onClick = { dest = id }) {
                         Text(

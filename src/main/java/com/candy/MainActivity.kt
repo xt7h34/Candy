@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -97,6 +97,7 @@ fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
             SessionStore.save(ctx, signedIn)
             AvatarCache.clear()
             MediaCache.clear()
+            StickerCache.clear()
             session = signedIn
         } else {
             handoffError = r.message(ctx)
@@ -123,6 +124,7 @@ fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
                 SessionStore.clear(ctx)
                 AvatarCache.clear()
                 MediaCache.clear()
+                StickerCache.clear()
                 session = null
             }
         }
@@ -135,6 +137,7 @@ fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
                     SessionStore.clear(ctx)
                     AvatarCache.clear()
                     MediaCache.clear()
+                    StickerCache.clear()
                     session = null
                 }
             },
@@ -156,7 +159,10 @@ sealed class Dest {
     object Camera : Dest()
     object StageEdit : Dest()
     object LoopEdit : Dest()
+    object FlareEdit : Dest()
     class LoopPlayer(val hash: String, val startId: String) : Dest()
+    class FlareView(val hash: String) : Dest()
+    object Memories : Dest()
 }
 
 @Composable
@@ -164,11 +170,14 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     val myHash = session.profile.optString("hash")
     var tab by rememberSaveable { mutableStateOf(0) }
     val stack = remember { mutableStateListOf<Dest>() }
-    // goes up whenever a track or stage is created or deleted, so the feed and the profile reload
+    // goes up whenever something is posted or deleted, so the feed and the profile reload
     var refreshTick by remember { mutableStateOf(0) }
     // the photo or video picked in the camera, waiting for its editor
     var pending by remember { mutableStateOf<Picked?>(null) }
-    // unread messages, for the badge on the Chats tab
+    // which mode the camera opens in, and the friend when it was opened to send a Flare to one person
+    var cameraStart by remember { mutableStateOf("stage") }
+    var flareTo by remember { mutableStateOf<String?>(null) }
+    // unread messages and unopened Flares, for the badge on the Chats tab
     var unread by remember { mutableStateOf(0) }
     // the track or loop whose comments sheet is open
     var commentsFor by remember { mutableStateOf<String?>(null) }
@@ -177,11 +186,11 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
 
     LaunchedEffect(refreshTick, tab, stack.size) {
         val r = net.get("/candy/dm/unread")
-        if (r.ok) unread = r.body?.optInt("count") ?: 0
+        if (r.ok) unread = (r.body?.optInt("count") ?: 0) + (r.body?.optInt("flares") ?: 0)
     }
     PollingEffect(Unit, 60_000L) {
         val r = net.get("/candy/dm/unread")
-        if (r.ok) unread = r.body?.optInt("count") ?: 0
+        if (r.ok) unread = (r.body?.optInt("count") ?: 0) + (r.body?.optInt("flares") ?: 0)
     }
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }
@@ -196,31 +205,46 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
         }
     }
 
+    fun openCamera(start: String, to: String? = null) {
+        cameraStart = start
+        flareTo = to
+        stack.add(Dest.Camera)
+    }
+
+    fun goEditor(p: Picked, dest: String) {
+        pending = p
+        stack.add(
+            when (dest) {
+                "stage" -> Dest.StageEdit
+                "loop" -> Dest.LoopEdit
+                "flare" -> Dest.FlareEdit
+                else -> Dest.NewPost
+            },
+        )
+    }
+
     val top = if (stack.isEmpty()) null else stack[stack.lastIndex]
     val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
-    val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.LoopEdit || top is Dest.Story || top is Dest.LoopPlayer
+    val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.LoopEdit || top is Dest.FlareEdit ||
+        top is Dest.Story || top is Dest.LoopPlayer || top is Dest.FlareView
 
     // the floating bar is on every screen except the chat and the new-track form, which have a keyboard
-    val showBar = top == null || !(top is Dest.Chat || top is Dest.NewPost)
+    val showBar = !fullScreen && (top == null || !(top is Dest.Chat || top is Dest.NewPost))
     var barPx by remember { mutableStateOf(0) }
     val barInset = if (showBar) with(LocalDensity.current) { barPx.toDp() } else 0.dp
 
     if (fullScreen) {
-        // the camera, the editor and the stage viewer use the whole screen
+        // the camera, the editors and the viewers use the whole screen
         Box(Modifier.fillMaxSize()) {
             when (top) {
                 is Dest.Camera -> CameraScreen(
-                    onBack = back,
+                    startDest = cameraStart,
+                    flareLocked = flareTo != null,
+                    onBack = { flareTo = null; back() },
+                    onMemories = { stack.add(Dest.Memories) },
                     onPicked = { picked, dest ->
-                        pending = picked
                         stack.removeAt(stack.lastIndex)
-                        stack.add(
-                            when (dest) {
-                                "stage" -> Dest.StageEdit
-                                "loop" -> Dest.LoopEdit
-                                else -> Dest.NewPost
-                            },
-                        )
+                        goEditor(picked, dest)
                     },
                 )
                 is Dest.StageEdit -> {
@@ -231,7 +255,8 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         StageEditorScreen(
                             net = net,
                             picked = p,
-                            loop = false,
+                            mode = "stage",
+                            presetTo = null,
                             onBack = { pending = null; back() },
                             onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
                         )
@@ -245,9 +270,25 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         StageEditorScreen(
                             net = net,
                             picked = p,
-                            loop = true,
+                            mode = "loop",
+                            presetTo = null,
                             onBack = { pending = null; back() },
                             onPosted = { pending = null; refreshTick++; tab = 1; stack.removeAt(stack.lastIndex) },
+                        )
+                    }
+                }
+                is Dest.FlareEdit -> {
+                    val p = pending
+                    if (p == null) {
+                        LaunchedEffect(Unit) { back() }
+                    } else {
+                        StageEditorScreen(
+                            net = net,
+                            picked = p,
+                            mode = "flare",
+                            presetTo = flareTo,
+                            onBack = { pending = null; flareTo = null; back() },
+                            onPosted = { pending = null; flareTo = null; refreshTick++; stack.removeAt(stack.lastIndex) },
                         )
                     }
                 }
@@ -265,12 +306,16 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                     hash = top.hash,
                     onBack = { refreshTick++; stack.removeAt(stack.lastIndex) },
                 )
+                is Dest.FlareView -> FlareViewer(
+                    net = net,
+                    hash = top.hash,
+                    onBack = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                )
                 else -> {}
             }
         }
     } else {
-        Scaffold(
-        ) { pad ->
+        Scaffold { pad ->
             // with the bar on screen the content runs underneath it, and each screen leaves room at its end
             val dir = LocalLayoutDirection.current
             val contentPad = if (showBar) {
@@ -283,90 +328,112 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                 pad
             }
             Box(Modifier.padding(contentPad).fillMaxSize()) {
-              CompositionLocalProvider(LocalBarInset provides barInset) {
-                if (top != null) {
-                    when (top) {
-                        is Dest.Profile -> ProfileScreen(
-                            net = net,
-                            hash = top.hash,
-                            onBack = back,
-                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                            onMessage = { stack.add(Dest.Chat(it)) },
-                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
-                        )
-                        is Dest.OpenPost -> PostScreen(
-                            net = net,
-                            postId = top.id,
-                            onBack = back,
-                            onOpenProfile = ::openProfile,
-                            onOpenComments = { commentsFor = it },
-                            onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
-                        )
-                        Dest.NewPost -> NewPostScreen(
-                            net = net,
-                            initial = pending?.uri,
-                            onBack = { pending = null; back() },
-                            onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
-                        )
-                        is Dest.Chat -> ChatScreen(
-                            net = net,
-                            hash = top.hash,
-                            onBack = back,
-                            onOpenProfile = ::openProfile,
-                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
-                        )
-                        is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
-                        Dest.Bubbles -> BubblesScreen(net, back)
-                        Dest.Visits -> VisitsScreen(net, back, ::openProfile)
-                        Dest.Growth -> GrowthScreen(net, back)
-                        is Dest.Story, Dest.Camera, Dest.StageEdit, Dest.LoopEdit, is Dest.LoopPlayer -> {}
-                    }
-                } else {
-                    when (tab) {
-                        0 -> FeedScreen(
-                            net = net,
-                            refreshKey = refreshTick,
-                            onOpen = ::openProfile,
-                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                            onOpenComments = { commentsFor = it },
-                            onNewPost = { pending = null; stack.add(Dest.NewPost) },
-                            onOpenStory = { stack.add(Dest.Story(it)) },
-                            onOpenCamera = { stack.add(Dest.Camera) },
-                        )
-                        1 -> Box(Modifier.fillMaxSize().padding(bottom = barInset)) { LoopsScreen(
-                            net = net,
-                            hash = null,
-                            startId = null,
-                            refreshKey = refreshTick,
-                            onBack = null,
-                            onOpenProfile = ::openProfile,
-                            onOpenComments = { commentsFor = it },
-                        ) }
-                        2 -> SearchScreen(net, ::openProfile)
-                        3 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
-                        else -> MeScreen(
-                            net = net,
-                            onUsers = { stack.add(Dest.Users(it)) },
-                            onBubbles = { stack.add(Dest.Bubbles) },
-                            onVisits = { stack.add(Dest.Visits) },
-                            onGrowth = { stack.add(Dest.Growth) },
-                            onSignOut = onSignOut,
-                            refreshKey = refreshTick,
-                            onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                            onNewPost = { pending = null; stack.add(Dest.NewPost) },
-                            onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
-                        )
+                CompositionLocalProvider(LocalBarInset provides barInset) {
+                    if (top != null) {
+                        when (top) {
+                            is Dest.Profile -> ProfileScreen(
+                                net = net,
+                                hash = top.hash,
+                                onBack = back,
+                                onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                                onOpenComments = { commentsFor = it },
+                                onMessage = { stack.add(Dest.Chat(it)) },
+                                onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                            )
+                            is Dest.OpenPost -> PostScreen(
+                                net = net,
+                                postId = top.id,
+                                onBack = back,
+                                onOpenProfile = ::openProfile,
+                                onOpenComments = { commentsFor = it },
+                                onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
+                            )
+                            Dest.NewPost -> NewPostScreen(
+                                net = net,
+                                initial = pending?.uri,
+                                onBack = { pending = null; back() },
+                                onPosted = { pending = null; refreshTick++; stack.removeAt(stack.lastIndex) },
+                            )
+                            is Dest.Chat -> ChatScreen(
+                                net = net,
+                                hash = top.hash,
+                                onBack = back,
+                                onOpenProfile = ::openProfile,
+                                onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                                onFlare = { h -> openCamera("flare", h) },
+                            )
+                            Dest.Memories -> MemoriesScreen(
+                                onBack = back,
+                                onUse = { picked, dest ->
+                                    // leave Memories (and the camera under it), then open the editor
+                                    while (stack.isNotEmpty() && (stack[stack.lastIndex] is Dest.Memories || stack[stack.lastIndex] is Dest.Camera)) {
+                                        stack.removeAt(stack.lastIndex)
+                                    }
+                                    goEditor(picked, dest)
+                                },
+                            )
+                            is Dest.Users -> UsersScreen(net, top.kind, back, ::openProfile)
+                            Dest.Bubbles -> BubblesScreen(net, back)
+                            Dest.Visits -> VisitsScreen(net, back, ::openProfile)
+                            Dest.Growth -> GrowthScreen(net, back)
+                            is Dest.Story, Dest.Camera, Dest.StageEdit, Dest.LoopEdit, Dest.FlareEdit,
+                            is Dest.LoopPlayer, is Dest.FlareView -> {}
+                        }
+                    } else {
+                        when (tab) {
+                            0 -> FeedScreen(
+                                net = net,
+                                refreshKey = refreshTick,
+                                onOpen = ::openProfile,
+                                onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                                onOpenComments = { commentsFor = it },
+                                onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                                onOpenStory = { stack.add(Dest.Story(it)) },
+                                onOpenCamera = { openCamera("stage") },
+                            )
+                            1 -> Box(Modifier.fillMaxSize().padding(bottom = barInset)) {
+                                LoopsScreen(
+                                    net = net,
+                                    hash = null,
+                                    startId = null,
+                                    refreshKey = refreshTick,
+                                    onBack = null,
+                                    onOpenProfile = ::openProfile,
+                                    onOpenComments = { commentsFor = it },
+                                )
+                            }
+                            2 -> SearchScreen(net, ::openProfile)
+                            3 -> ChatsScreen(
+                                net = net,
+                                refreshKey = refreshTick,
+                                onOpenChat = { stack.add(Dest.Chat(it)) },
+                                onOpenFlare = { stack.add(Dest.FlareView(it)) },
+                                onSendFlare = { openCamera("flare", it) },
+                            )
+                            else -> MeScreen(
+                                net = net,
+                                onUsers = { stack.add(Dest.Users(it)) },
+                                onBubbles = { stack.add(Dest.Bubbles) },
+                                onVisits = { stack.add(Dest.Visits) },
+                                onGrowth = { stack.add(Dest.Growth) },
+                                onSignOut = onSignOut,
+                                refreshKey = refreshTick,
+                                onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                                onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                                onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                                onMemories = { stack.add(Dest.Memories) },
+                            )
+                        }
                     }
                 }
-              }
-              if (showBar) {
-                FloatingNavBar(
-                    selected = tab,
-                    unread = unread,
-                    onSelect = { stack.clear(); tab = it },
-                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barPx = it.height },
-                )
-              }
+                if (showBar) {
+                    FloatingNavBar(
+                        selected = tab,
+                        unread = unread,
+                        onSelect = { stack.clear(); tab = it },
+                        modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barPx = it.height },
+                    )
+                }
             }
         }
     }

@@ -1,12 +1,6 @@
 package com.candy
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -22,11 +16,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -117,12 +117,18 @@ fun timeLeft(c: Context, expiresAt: Long): String {
  */
 @Composable
 fun PollingEffect(key: Any?, intervalMs: Long, block: suspend () -> Unit) {
+    PollingEffect(key, { intervalMs }, block)
+}
+
+/** Same, with an interval that can change between rounds (for example, faster while someone is typing). */
+@Composable
+fun PollingEffect(key: Any?, intervalMs: () -> Long, block: suspend () -> Unit) {
     val owner = LocalContext.current as LifecycleOwner
     LaunchedEffect(key) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 block()
-                delay(intervalMs)
+                delay(intervalMs())
             }
         }
     }

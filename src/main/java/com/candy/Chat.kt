@@ -59,11 +59,17 @@ private class ChatMsg(
     val loopOwnerHash: String,
     val loopOwnerName: String,
     val loopGone: Boolean,
+    val stickerId: String?,
+    val replyN: Int,
+    val replyText: String,
+    val replyMine: Boolean,
+    val replyKind: String,
 )
 
 private fun JSONObject.toChatMsg(): ChatMsg {
     val loop = optJSONObject("loop")
     val owner = loop?.optJSONObject("owner")
+    val reply = optJSONObject("reply")
     return ChatMsg(
         n = optInt("n"),
         mine = optBoolean("mine"),
@@ -72,18 +78,33 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         loopOwnerHash = owner?.optString("hash").orEmpty(),
         loopOwnerName = owner?.optString("name").orEmpty(),
         loopGone = loop?.optBoolean("gone") == true,
+        stickerId = optJSONObject("sticker")?.optString("id")?.takeIf { it.isNotEmpty() },
+        replyN = reply?.optInt("n") ?: 0,
+        replyText = reply?.optString("text").orEmpty(),
+        replyMine = reply?.optBoolean("mine") == true,
+        replyKind = reply?.optString("kind").orEmpty(),
     )
 }
 
 private fun hoursLeft(ms: Long): Int = maxOf(1L, (ms + 3_599_999L) / 3_600_000L).toInt()
 
-/** Your Flows (with accept buttons for requests) on top, then all your conversations with a badge for unread ones. */
+/**
+ * Flares and Flows on top, then all your conversations with a badge for unread ones.
+ * A Flare friend with something waiting opens it; otherwise the row opens the camera to send one.
+ */
 @Composable
-fun ChatsScreen(net: Net, refreshKey: Int, onOpenChat: (String) -> Unit) {
+fun ChatsScreen(
+    net: Net,
+    refreshKey: Int,
+    onOpenChat: (String) -> Unit,
+    onOpenFlare: (String) -> Unit,
+    onSendFlare: (String) -> Unit,
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var threads by remember { mutableStateOf<List<ChatThread>>(emptyList()) }
     var flows by remember { mutableStateOf<List<FlowInfo>>(emptyList()) }
+    var flareFriends by remember { mutableStateOf<List<FlareFriend>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var tick by remember { mutableStateOf(0) }
@@ -115,6 +136,8 @@ fun ChatsScreen(net: Net, refreshKey: Int, onOpenChat: (String) -> Unit) {
         }
         val f = net.get("/candy/flows")
         if (f.ok) flows = f.body?.optJSONArray("flows").toFlows()
+        val fl = net.get("/candy/flares")
+        if (fl.ok) flareFriends = fl.body?.optJSONArray("friends").toFlareFriends()
     }
 
     fun answer(path: String, hash: String) {
@@ -130,6 +153,43 @@ fun ChatsScreen(net: Net, refreshKey: Int, onOpenChat: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { ErrorText(error) }
+
+        if (flareFriends.isNotEmpty()) {
+            item { SectionTitle(stringResource(R.string.flares_title)) }
+            items(flareFriends) { ff ->
+                Card(
+                    Modifier.fillMaxWidth().clickable { if (ff.unopened > 0) onOpenFlare(ff.hash) else onSendFlare(ff.hash) },
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Avatar(ff.hash, net.token, 44.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                ff.name.ifBlank { ff.hash },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Muted(
+                                if (ff.unopened > 0) {
+                                    stringResource(R.string.flare_new, ff.unopened) + " · " + stringResource(R.string.flare_open)
+                                } else if (ff.atRisk) {
+                                    "⏳ " + stringResource(R.string.flow_at_risk, hoursLeft(ff.msLeft))
+                                } else {
+                                    stringResource(R.string.flare_tap_send)
+                                },
+                            )
+                        }
+                        Text("⚡ " + ff.streak, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
+
         if (flows.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.flow_title)) }
             items(flows) { f ->
@@ -167,9 +227,18 @@ fun ChatsScreen(net: Net, refreshKey: Int, onOpenChat: (String) -> Unit) {
                     }
                 }
             }
+        }
+
+        if (flows.isNotEmpty() || flareFriends.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.chats_title)) }
         } else {
-            item { Text(stringResource(R.string.chats_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp)) }
+            item {
+                Text(
+                    stringResource(R.string.chats_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
         }
         if (loading) item { Loading() }
         if (!loading && error.isEmpty() && threads.isEmpty()) {
@@ -212,9 +281,25 @@ fun ChatsScreen(net: Net, refreshKey: Int, onOpenChat: (String) -> Unit) {
     }
 }
 
+@Composable
+private fun QuoteBlock(m: ChatMsg, who: String, textColor: Color) {
+    val snippet = when (m.replyKind) {
+        "sticker" -> "😊 " + stringResource(R.string.chat_kind_sticker)
+        "loop" -> "🎬 " + stringResource(R.string.chat_kind_loop)
+        else -> m.replyText
+    }
+    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x22000000)).padding(6.dp)) {
+        Column {
+            Text(who, color = textColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text(snippet, color = textColor, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /**
- * One conversation, with the Flow you have with this person at the top. New messages arrive every few
- * seconds while it is open. A stranger can send two messages; to keep going they must follow the other person.
+ * One conversation: the Flow with this person at the top, messages you can reply to, stickers,
+ * and "typing..." when they are writing. New messages arrive every few seconds while it is open
+ * (faster while the other person types). A stranger can send two messages; then they must follow you.
  */
 @Composable
 fun ChatScreen(
@@ -223,6 +308,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenLoop: (String, String) -> Unit,
+    onFlare: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -233,12 +319,16 @@ fun ChatScreen(
     var canSend by remember { mutableStateOf(true) }
     var remaining by remember { mutableStateOf<Int?>(null) }
     var flow by remember { mutableStateOf<FlowInfo?>(null) }
+    var peerTyping by remember { mutableStateOf(false) }
+    var replyTo by remember { mutableStateOf<ChatMsg?>(null) }
+    var showStickers by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var lastTypingSent by remember { mutableStateOf(0L) }
     val listState = rememberLazyListState()
 
-    PollingEffect(hash, 5_000L) {
+    PollingEffect(hash, { if (peerTyping) 1500L else 5000L }) {
         val r = net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=" + latest)
         if (r.ok) {
             val body = r.body
@@ -256,6 +346,7 @@ fun ChatScreen(
             canSend = body?.optBoolean("canSend", true) ?: true
             remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
             flow = body?.optJSONObject("flow")?.toFlow()
+            peerTyping = body?.optBoolean("typing") == true
             error = ""
         } else {
             error = r.message(ctx)
@@ -266,15 +357,31 @@ fun ChatScreen(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    fun send() {
-        val text = input.trim()
-        if (text.isEmpty() || busy) return
+    // tell the other person we are typing (at most every 3 seconds)
+    LaunchedEffect(input) {
+        if (input.isNotBlank()) {
+            val now = System.currentTimeMillis()
+            if (now - lastTypingSent > 3000) {
+                lastTypingSent = now
+                net.post("/candy/dm/typing", JSONObject().put("hash", bareHash(hash)))
+            }
+        }
+    }
+
+    fun send(sticker: String? = null) {
+        val text = if (sticker == null) input.trim() else ""
+        if ((text.isEmpty() && sticker == null) || busy) return
         scope.launch {
             busy = true
-            val r = net.post("/candy/dm/send", JSONObject().put("hash", bareHash(hash)).put("text", text))
+            val body = JSONObject().put("hash", bareHash(hash)).put("text", text)
+            if (sticker != null) body.put("sticker", sticker)
+            val quoted = replyTo
+            if (quoted != null) body.put("reply", quoted.n)
+            val r = net.post("/candy/dm/send", body)
             busy = false
             if (r.ok) {
-                input = ""
+                if (sticker == null) input = ""
+                replyTo = null
                 error = ""
                 val m = r.body?.optJSONObject("message")?.toChatMsg()
                 if (m != null && messages.none { it.n == m.n }) {
@@ -302,6 +409,8 @@ fun ChatScreen(
         }
     }
 
+    val shownName = peerName.ifBlank { peerHash }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -310,17 +419,22 @@ fun ChatScreen(
         ) {
             TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Row(
-                Modifier.clickable { onOpenProfile(peerHash) },
+                Modifier.weight(1f).clickable { onOpenProfile(peerHash) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Avatar(peerHash, net.token, 36.dp)
-                Text(peerName.ifBlank { peerHash }, style = MaterialTheme.typography.titleMedium)
+                Column {
+                    Text(shownName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (peerTyping) {
+                        Text(stringResource(R.string.chat_typing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
             }
+            TextButton(onClick = { onFlare(peerHash) }) { Text("📸", style = MaterialTheme.typography.titleLarge) }
         }
 
         val f = flow
-        val shownName = peerName.ifBlank { peerHash }
         Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (f == null) {
@@ -369,36 +483,49 @@ fun ChatScreen(
             items(messages) { m ->
                 Row(
                     Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = if (m.mine) Arrangement.End else Arrangement.Start,
                 ) {
-                    Column(
-                        Modifier
-                            .widthIn(max = 280.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (m.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        val textColor = if (m.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                        val loopId = m.loopId
-                        if (loopId != null) {
-                            if (m.loopGone) {
-                                Text(stringResource(R.string.chat_loop_gone), color = textColor, style = MaterialTheme.typography.bodySmall)
-                            } else {
-                                Box(
-                                    Modifier
-                                        .width(150.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onOpenLoop(m.loopOwnerHash, loopId) },
-                                ) {
-                                    PostImage(loopId, net.token, true, 1f)
-                                    Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
-                                }
-                                Text(m.loopOwnerName.ifBlank { m.loopOwnerHash }, color = textColor, style = MaterialTheme.typography.labelSmall)
-                            }
+                    if (m.mine) TextButton(onClick = { replyTo = m }) { Text("↩") }
+                    val stickerId = m.stickerId
+                    val quoteWho = if (m.replyMine) stringResource(R.string.nav_me) else shownName
+                    if (stickerId != null) {
+                        Column(horizontalAlignment = if (m.mine) Alignment.End else Alignment.Start) {
+                            if (m.replyN > 0) QuoteBlock(m, quoteWho, MaterialTheme.colorScheme.onSurface)
+                            StickerImage(stickerId, net.token, 120.dp)
                         }
-                        if (m.text.isNotEmpty()) Text(m.text, color = textColor)
+                    } else {
+                        Column(
+                            Modifier
+                                .widthIn(max = 260.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (m.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val textColor = if (m.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            if (m.replyN > 0) QuoteBlock(m, quoteWho, textColor)
+                            val loopId = m.loopId
+                            if (loopId != null) {
+                                if (m.loopGone) {
+                                    Text(stringResource(R.string.chat_loop_gone), color = textColor, style = MaterialTheme.typography.bodySmall)
+                                } else {
+                                    Box(
+                                        Modifier
+                                            .width(150.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { onOpenLoop(m.loopOwnerHash, loopId) },
+                                    ) {
+                                        PostImage(loopId, net.token, true, 1f)
+                                        Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+                                    }
+                                    Text(m.loopOwnerName.ifBlank { m.loopOwnerHash }, color = textColor, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (m.text.isNotEmpty()) Text(m.text, color = textColor)
+                        }
                     }
+                    if (!m.mine) TextButton(onClick = { replyTo = m }) { Text("↩") }
                 }
             }
         }
@@ -406,6 +533,7 @@ fun ChatScreen(
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ErrorText(error)
             val left = remaining
+            val quoted = replyTo
             if (!canSend) {
                 Text(
                     stringResource(R.string.chat_limited, shownName),
@@ -428,7 +556,22 @@ fun ChatScreen(
                 ) { Text(stringResource(R.string.prof_follow)) }
             } else {
                 if (left != null) Muted(stringResource(R.string.chat_remaining, left))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (quoted != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Muted(
+                            stringResource(R.string.chat_replying, if (quoted.mine) stringResource(R.string.nav_me) else shownName) + ": " +
+                                (if (quoted.stickerId != null) "😊" else if (quoted.loopId != null) "🎬" else quoted.text.take(40)),
+                            Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { replyTo = null }) { Text("✕") }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { showStickers = true }) { Text("😊", style = MaterialTheme.typography.titleLarge) }
                     Field(
                         stringResource(R.string.chat_hint), input, { input = it.take(1000) },
                         singleLine = false,
@@ -440,5 +583,16 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showStickers) {
+        StickerPicker(
+            net = net,
+            onPick = { id ->
+                showStickers = false
+                send(id)
+            },
+            onDismiss = { showStickers = false },
+        )
     }
 }

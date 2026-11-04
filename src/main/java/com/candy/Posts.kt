@@ -23,21 +23,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Surface
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -207,7 +207,10 @@ fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: In
     ) { Text((if (liked) "❤️" else "🤍") + " " + likes) }
 }
 
-/** A track in the feed: who and when, the picture, the caption, then like and comment. */
+/**
+ * A track in the feed: who and when, the picture, the caption, then like and comment.
+ * [onComments] opens the comments sheet; it defaults to [onOpenPost] for screens that do not need the sheet.
+ */
 @Composable
 fun PostCard(
     net: Net,
@@ -439,7 +442,10 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
 
 // ───────────────────────── One post ─────────────────────────
 
-/** A track on its own: the same card as in the feed, bigger. Comments open in the sheet. */
+/**
+ * A track on its own: the same card as in the feed, bigger, with a ⋮ menu.
+ * Comments open in the sheet through [onOpenComments] — the same sheet used from the feed.
+ */
 @Composable
 fun PostScreen(
     net: Net,

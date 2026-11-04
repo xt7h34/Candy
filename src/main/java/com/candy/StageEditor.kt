@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -127,11 +129,16 @@ private fun videoCover(c: android.content.Context, uri: Uri): ByteArray? = try {
 }
 
 /**
- * Edit a photo or video before it goes to Stage: write text on it, move the text with your finger,
- * choose its colour and size. The text is kept as text (not burned in), so it also works on videos.
+ * Edit a photo or video before it is sent. [mode] is "stage", "loop" or "flare".
+ * For a Stage or a Flare you can write text on it, move the text with your finger and choose its
+ * colour and size (kept as text, so it also works on videos). A Loop gets a caption instead.
+ * A Flare goes to friends only (people who follow each other with you), and must come from the camera.
+ * The disk button saves it in Memories, on this phone.
  */
 @Composable
-fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Unit, onPosted: () -> Unit) {
+fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?, onBack: () -> Unit, onPosted: () -> Unit) {
+    val loop = mode == "loop"
+    val flare = mode == "flare"
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val overlays = remember { mutableStateListOf<Overlay>() }
@@ -141,6 +148,10 @@ fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Uni
     var progress by remember { mutableStateOf(0f) }
     var error by remember { mutableStateOf("") }
     var caption by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(false) }
+    var friends by remember { mutableStateOf<List<CUser>>(emptyList()) }
+    var friendsLoaded by remember { mutableStateOf(false) }
+    val selected = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(picked.uri) {
         if (!picked.isVideo) {
@@ -151,21 +162,46 @@ fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Uni
         }
     }
 
+    // a Flare goes to friends: people you follow who follow you back
+    LaunchedEffect(flare, presetTo) {
+        if (flare) {
+            if (presetTo != null) {
+                selected.add(presetTo)
+            } else {
+                val r = net.get("/candy/following")
+                if (r.ok) friends = r.body?.optJSONArray("users").toUsers().filter { it.followsMe }
+                friendsLoaded = true
+            }
+        }
+    }
+
     fun share() {
         scope.launch {
             busy = true
             error = ""
             progress = 0f
-            val body = JSONObject()
-            if (loop) {
-                body.put("loop", true).put("caption", caption.trim())
-            } else {
-                body.put("story", true).put("overlays", overlays.toList().toJson())
+            if (flare && !picked.fromCamera) {
+                busy = false
+                error = ctx.getString(R.string.flare_camera_only)
+                return@launch
+            }
+            if (flare && selected.isEmpty()) {
+                busy = false
+                error = ctx.getString(R.string.flare_pick)
+                return@launch
             }
             if (loop && !picked.isVideo) {
                 busy = false
                 error = ctx.getString(R.string.cam_loop_video)
                 return@launch
+            }
+            val body = JSONObject()
+            if (loop) {
+                body.put("loop", true).put("caption", caption.trim())
+            } else if (flare) {
+                body.put("flare", true).put("to", JSONArray(selected.map { bareHash(it) })).put("overlays", overlays.toList().toJson())
+            } else {
+                body.put("story", true).put("overlays", overlays.toList().toJson())
             }
             if (picked.isVideo) {
                 val ok = withContext(Dispatchers.IO) { videoLooksOk(ctx, picked.uri) }
@@ -260,9 +296,19 @@ fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Uni
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             TextButton(onClick = onBack, enabled = !busy) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge) }
-            if (!loop) {
-                TextButton(onClick = { editing = -2 }, enabled = !busy && overlays.size < 8) {
-                    Text("Aa", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Row {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            saved = withContext(Dispatchers.IO) { MemoriesStore.add(ctx, picked) }
+                        }
+                    },
+                    enabled = !busy && !saved,
+                ) { Text(if (saved) "✅" else "💾", style = MaterialTheme.typography.titleLarge) }
+                if (!loop) {
+                    TextButton(onClick = { editing = -2 }, enabled = !busy && overlays.size < 8) {
+                        Text("Aa", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    }
                 }
             }
         }
@@ -271,6 +317,7 @@ fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Uni
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (saved) Text(stringResource(R.string.mem_saved), color = Color.White, style = MaterialTheme.typography.labelMedium)
             if (busy && picked.isVideo) {
                 LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.stage_uploading, (progress * 100).toInt()), color = Color.White)
@@ -289,8 +336,28 @@ fun StageEditorScreen(net: Net, picked: Picked, loop: Boolean, onBack: () -> Uni
                     Field(stringResource(R.string.loop_caption_hint), caption, { caption = it.take(300) }, singleLine = false)
                 }
             }
+            if (flare && presetTo == null) {
+                Text(stringResource(R.string.flare_to), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                if (friendsLoaded && friends.isEmpty()) {
+                    Text(stringResource(R.string.flare_friends_empty), color = Color(0xCCFFFFFF))
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(friends) { u ->
+                        val on = selected.contains(u.hash)
+                        Column(
+                            Modifier.clickable { if (on) selected.remove(u.hash) else if (selected.size < 5) selected.add(u.hash) },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(Modifier.border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x66FFFFFF), CircleShape).padding(3.dp)) {
+                                Avatar(u.hash, net.token, 44.dp)
+                            }
+                            Text(u.name.ifBlank { u.hash }, color = Color.White, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                        }
+                    }
+                }
+            }
             Button(onClick = { share() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(if (loop) R.string.loop_share else R.string.stage_share))
+                Text(stringResource(if (loop) R.string.loop_share else if (flare) R.string.flare_send else R.string.stage_share))
             }
         }
     }

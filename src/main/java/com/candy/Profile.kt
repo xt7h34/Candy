@@ -347,7 +347,7 @@ private fun VibeDialog(initial: String, max: Int, onSave: (String) -> Unit, onCl
     )
 }
 
-/** Your own profile: photo, vibe, drifts, bubbles, Plus tools and sign out. */
+/** Your own profile: photo, vibe, drifts, bubbles, Plus tools, Memories and sign out. */
 @Composable
 fun MeScreen(
     net: Net,
@@ -360,6 +360,7 @@ fun MeScreen(
     onOpenPost: (String) -> Unit,
     onNewPost: () -> Unit,
     onOpenLoop: (String, String) -> Unit,
+    onMemories: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -430,6 +431,9 @@ fun MeScreen(
                     }
                     OutlinedButton(onClick = onGrowth, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.prof_growth))
+                    }
+                    OutlinedButton(onClick = onMemories, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text("🗂️  " + stringResource(R.string.mem_title))
                     }
                 }
 

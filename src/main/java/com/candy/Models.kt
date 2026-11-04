@@ -280,3 +280,64 @@ fun JSONArray?.toFlows(): List<FlowInfo> {
     for (i in 0 until length()) optJSONObject(i)?.let { out.add(it.toFlow()) }
     return out
 }
+
+/** A Flare you received and have not opened yet. */
+class FlareItem(
+    val id: String,
+    val fromName: String,
+    val fromHash: String,
+    val kind: String,
+    val overlays: List<Overlay>,
+)
+
+/** A friend you exchange Flares with: the streak, today's state, and how many are waiting for you. */
+class FlareFriend(
+    val name: String,
+    val hash: String,
+    val streak: Int,
+    val iSent: Boolean,
+    val theySent: Boolean,
+    val atRisk: Boolean,
+    val msLeft: Long,
+    val unopened: Int,
+)
+
+fun JSONObject.toFlareItem(): FlareItem {
+    val from = optJSONObject("from")
+    return FlareItem(
+        id = optString("id"),
+        fromName = from?.optString("name").orEmpty(),
+        fromHash = from?.optString("hash").orEmpty(),
+        kind = optString("kind", "photo"),
+        overlays = optJSONArray("overlays").toOverlays(),
+    )
+}
+
+fun JSONArray?.toFlareItems(): List<FlareItem> {
+    if (this == null) return emptyList()
+    val out = ArrayList<FlareItem>()
+    for (i in 0 until length()) optJSONObject(i)?.let { out.add(it.toFlareItem()) }
+    return out
+}
+
+fun JSONArray?.toFlareFriends(): List<FlareFriend> {
+    if (this == null) return emptyList()
+    val out = ArrayList<FlareFriend>()
+    for (i in 0 until length()) {
+        val o = optJSONObject(i) ?: continue
+        val p = o.optJSONObject("peer")
+        out.add(
+            FlareFriend(
+                name = p?.optString("name").orEmpty(),
+                hash = p?.optString("hash").orEmpty(),
+                streak = o.optInt("streak"),
+                iSent = o.optBoolean("iSent"),
+                theySent = o.optBoolean("theySent"),
+                atRisk = o.optBoolean("atRisk"),
+                msLeft = o.optLong("msLeft"),
+                unopened = o.optInt("unopened"),
+            ),
+        )
+    }
+    return out
+}
