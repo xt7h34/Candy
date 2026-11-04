@@ -64,12 +64,20 @@ private class ChatMsg(
     val replyText: String,
     val replyMine: Boolean,
     val replyKind: String,
+    val trackId: String?,
+    val trackOwnerHash: String,
+    val trackOwnerName: String,
+    val trackCaption: String,
+    val trackHasImage: Boolean,
+    val trackGone: Boolean,
 )
 
 private fun JSONObject.toChatMsg(): ChatMsg {
     val loop = optJSONObject("loop")
     val owner = loop?.optJSONObject("owner")
     val reply = optJSONObject("reply")
+    val track = optJSONObject("track")
+    val trackOwner = track?.optJSONObject("owner")
     return ChatMsg(
         n = optInt("n"),
         mine = optBoolean("mine"),
@@ -83,6 +91,12 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         replyText = reply?.optString("text").orEmpty(),
         replyMine = reply?.optBoolean("mine") == true,
         replyKind = reply?.optString("kind").orEmpty(),
+        trackId = track?.optString("id")?.takeIf { it.isNotEmpty() },
+        trackOwnerHash = trackOwner?.optString("hash").orEmpty(),
+        trackOwnerName = trackOwner?.optString("name").orEmpty(),
+        trackCaption = track?.optString("caption").orEmpty(),
+        trackHasImage = track?.optBoolean("hasImage") == true,
+        trackGone = track?.optBoolean("gone") == true,
     )
 }
 
@@ -286,6 +300,7 @@ private fun QuoteBlock(m: ChatMsg, who: String, textColor: Color) {
     val snippet = when (m.replyKind) {
         "sticker" -> "😊 " + stringResource(R.string.chat_kind_sticker)
         "loop" -> "🎬 " + stringResource(R.string.chat_kind_loop)
+        "track" -> "🖼️ " + stringResource(R.string.chat_kind_track)
         else -> m.replyText
     }
     Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x22000000)).padding(6.dp)) {
@@ -308,6 +323,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenLoop: (String, String) -> Unit,
+    onOpenPost: (String) -> Unit,
     onFlare: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -520,6 +536,26 @@ fun ChatScreen(
                                         Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
                                     }
                                     Text(m.loopOwnerName.ifBlank { m.loopOwnerHash }, color = textColor, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            val trackId = m.trackId
+                            if (trackId != null) {
+                                if (m.trackGone) {
+                                    Text(stringResource(R.string.chat_track_gone), color = textColor, style = MaterialTheme.typography.bodySmall)
+                                } else {
+                                    Column(
+                                        Modifier
+                                            .width(180.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { onOpenPost(trackId) },
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        if (m.trackHasImage) PostImage(trackId, net.token, true, 1f)
+                                        Text(m.trackOwnerName.ifBlank { m.trackOwnerHash }, color = textColor, style = MaterialTheme.typography.labelSmall)
+                                        if (m.trackCaption.isNotBlank()) {
+                                            Text(m.trackCaption, color = textColor, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                                        }
+                                    }
                                 }
                             }
                             if (m.text.isNotEmpty()) Text(m.text, color = textColor)

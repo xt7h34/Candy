@@ -1,5 +1,6 @@
 package com.candy
 
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,7 +47,12 @@ fun UsersScreen(net: Net, kind: String, onBack: () -> Unit, onOpen: (String) -> 
 
     LaunchedEffect(kind) {
         loading = true
-        val r = net.get("/candy/$kind")
+        val endpoint = if (kind.startsWith("mutuals:")) {
+            "/candy/mutuals?hash=" + Uri.encode(bareHash(kind.removePrefix("mutuals:")))
+        } else {
+            "/candy/$kind"
+        }
+        val r = net.get(endpoint)
         loading = false
         if (r.ok) {
             users = r.body?.optJSONArray("users").toUsers()
@@ -58,7 +64,13 @@ fun UsersScreen(net: Net, kind: String, onBack: () -> Unit, onOpen: (String) -> 
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(
-            stringResource(if (kind == "followers") R.string.prof_followers else R.string.prof_following),
+            stringResource(
+                when {
+                    kind == "followers" -> R.string.prof_followers
+                    kind.startsWith("mutuals:") -> R.string.prof_mutuals
+                    else -> R.string.prof_following
+                },
+            ),
             onBack,
         )
         LazyColumn(

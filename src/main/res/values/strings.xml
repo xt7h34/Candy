@@ -221,4 +221,10 @@
     <string name="ago_m">%1$dm</string>
     <string name="ago_h">%1$dh</string>
     <string name="ago_d">%1$dd</string>
+    <string name="prof_mutuals">Friends in common</string>
+    <string name="post_share_title">Send this track to</string>
+    <string name="chat_track_gone">This track is no longer available</string>
+    <string name="prof_show_location">Show my location on my tracks (%1$s)</string>
+    <string name="prof_location_hint">To show your location on your tracks, set it in the bot with .موقعي</string>
+    <string name="chat_kind_track">Track</string>
 </resources>

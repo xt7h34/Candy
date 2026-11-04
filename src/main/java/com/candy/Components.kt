@@ -1,6 +1,13 @@
 package com.candy
 
 import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -157,4 +164,24 @@ fun taggedText(text: String, color: Color): AnnotatedString = buildAnnotatedStri
         last = m.range.last + 1
     }
     append(text.substring(last))
+}
+
+/** The blue check next to a verified account. */
+@Composable
+fun VerifiedBadge(size: Dp = 16.dp) {
+    Box(
+        Modifier.size(size).clip(CircleShape).background(Color(0xFF1D9BF0)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("✓", color = Color.White, fontSize = (size.value * 0.68f).sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** A name, with the blue check after it when the account is verified. */
+@Composable
+fun NameWithBadge(name: String, verified: Boolean, style: TextStyle, fontWeight: FontWeight? = null) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(name, style = style, fontWeight = fontWeight)
+        if (verified) VerifiedBadge()
+    }
 }

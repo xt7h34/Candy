@@ -221,4 +221,10 @@
     <string name="ago_m">%1$d د</string>
     <string name="ago_h">%1$d س</string>
     <string name="ago_d">%1$d ي</string>
+    <string name="prof_mutuals">أصدقاء مشتركين</string>
+    <string name="post_share_title">ابعت التراك ده لـ</string>
+    <string name="chat_track_gone">التراك ده مش موجود تاني</string>
+    <string name="prof_show_location">اعرض موقعي على تراكاتي (%1$s)</string>
+    <string name="prof_location_hint">عشان موقعك يظهر على تراكاتك، سجّله في البوت بـ .موقعي</string>
+    <string name="chat_kind_track">تراك</string>
 </resources>

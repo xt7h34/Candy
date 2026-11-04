@@ -18,6 +18,7 @@ class CUser(
     val followedByMe: Boolean,
     val followsMe: Boolean,
     val posts: Int = 0,
+    val verified: Boolean = false,
 )
 
 fun JSONObject.toUser() = CUser(
@@ -31,6 +32,7 @@ fun JSONObject.toUser() = CUser(
     followedByMe = optBoolean("followedByMe"),
     followsMe = optBoolean("followsMe"),
     posts = optInt("posts"),
+    verified = optBoolean("verified"),
 )
 
 fun JSONArray?.toUsers(): List<CUser> {
@@ -109,6 +111,8 @@ class Post(
     val liked: Boolean,
     val comments: Int,
     val mine: Boolean,
+    val ownerVerified: Boolean = false,
+    val location: String? = null,
     val ownerName: String,
     val ownerHash: String,
 )
@@ -128,6 +132,8 @@ fun JSONObject.toPost(): Post {
         liked = optBoolean("liked"),
         comments = optInt("comments"),
         mine = optBoolean("mine"),
+        ownerVerified = owner?.optBoolean("verified") == true,
+        location = if (isNull("location")) null else optString("location").ifEmpty { null },
         ownerName = owner?.optString("name").orEmpty(),
         ownerHash = owner?.optString("hash").orEmpty(),
     )
@@ -145,6 +151,7 @@ class Comment(
     val text: String,
     val at: Long,
     val canDelete: Boolean,
+    val ownerVerified: Boolean = false,
     val ownerName: String,
     val ownerHash: String,
 )
@@ -161,6 +168,7 @@ fun JSONArray?.toComments(): List<Comment> {
                 text = o.optString("text"),
                 at = o.optLong("at"),
                 canDelete = o.optBoolean("canDelete"),
+                ownerVerified = owner?.optBoolean("verified") == true,
                 ownerName = owner?.optString("name").orEmpty(),
                 ownerHash = owner?.optString("hash").orEmpty(),
             ),

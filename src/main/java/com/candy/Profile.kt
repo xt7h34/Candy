@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,10 +48,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -195,11 +199,11 @@ private fun CountsRow(user: CUser, onFollowers: (() -> Unit)?, onFollowing: (() 
 /** The part both profiles share: name, hash, vibe and join date. */
 @Composable
 private fun ProfileInfo(u: CUser) {
-    Text(
+    NameWithBadge(
         u.name.ifBlank { u.hash },
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.SemiBold,
-        textAlign = TextAlign.Center,
+        u.verified,
+        MaterialTheme.typography.headlineMedium,
+        FontWeight.SemiBold,
     )
     Text(u.hash, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
     if (u.followsMe && !u.isMe) Muted(stringResource(R.string.prof_follows_you))
@@ -214,6 +218,26 @@ private fun ProfileInfo(u: CUser) {
     if (joined != null) Muted(stringResource(R.string.prof_joined, joined))
 }
 
+/** Up to three friends you both have as followers, and an arrow to the full list. */
+@Composable
+private fun MutualCircles(net: Net, people: List<Member>, onMore: () -> Unit) {
+    val arrow = if (LocalLayoutDirection.current == LayoutDirection.Rtl) "‹" else "›"
+    Row(
+        Modifier.clip(CircleShape).clickable(onClick = onMore),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (m in people) {
+            Avatar(m.hash, net.token, 40.dp, 0, Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape))
+        }
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                Text(arrow, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    }
+}
+
 /** Someone else's profile, with a follow button and the drifts you can see. */
 @Composable
 fun ProfileScreen(
@@ -223,10 +247,12 @@ fun ProfileScreen(
     onOpenPost: (String) -> Unit,
     onMessage: (String) -> Unit,
     onOpenLoop: (String, String) -> Unit,
+    onMutuals: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var user by remember { mutableStateOf<CUser?>(null) }
+    var mutuals by remember { mutableStateOf<List<Member>>(emptyList()) }
     var drifts by remember { mutableStateOf<List<Drift>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
@@ -242,6 +268,15 @@ fun ProfileScreen(
         if (r.ok) {
             user = r.body?.toUser()
             drifts = r.body?.optJSONArray("drifts").toDrifts()
+            val list = ArrayList<Member>()
+            val arr = r.body?.optJSONArray("mutuals")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    list.add(Member(o.optString("name"), o.optString("hash")))
+                }
+            }
+            mutuals = list
             error = ""
         } else {
             error = r.message(ctx)
@@ -265,6 +300,9 @@ fun ProfileScreen(
             ) {
                 ProfileInfo(u)
                 CountsRow(u, null, null)
+                if (!u.isMe && mutuals.isNotEmpty()) {
+                    MutualCircles(net, mutuals) { onMutuals(u.hash) }
+                }
                 if (!u.isMe) {
                     val toggle: () -> Unit = {
                         scope.launch {
@@ -452,6 +490,28 @@ fun MeScreen(
                             }
                         },
                     )
+                }
+
+                val loc = data.optJSONObject("location")
+                if (loc != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(stringResource(R.string.prof_show_location, loc.optString("text")), Modifier.weight(1f))
+                        Switch(
+                            checked = loc.optBoolean("visible", true),
+                            onCheckedChange = { on ->
+                                scope.launch {
+                                    val r = net.post("/candy/location/visibility", JSONObject().put("visible", on))
+                                    if (r.ok) reload++ else error = r.message(ctx)
+                                }
+                            },
+                        )
+                    }
+                } else {
+                    Muted(stringResource(R.string.prof_location_hint))
                 }
 
                 UpdateSection()

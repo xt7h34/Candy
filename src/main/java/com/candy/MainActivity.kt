@@ -338,6 +338,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                                 onOpenPost = { stack.add(Dest.OpenPost(it)) },
                                 onMessage = { stack.add(Dest.Chat(it)) },
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                                onMutuals = { stack.add(Dest.Users("mutuals:" + it)) },
                             )
                             is Dest.OpenPost -> PostScreen(
                                 net = net,
@@ -359,6 +360,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                                 onBack = back,
                                 onOpenProfile = ::openProfile,
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
+                                onOpenPost = { stack.add(Dest.OpenPost(it)) },
                                 onFlare = { h -> openCamera("flare", h) },
                             )
                             Dest.Memories -> MemoriesScreen(

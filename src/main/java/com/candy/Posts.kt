@@ -220,6 +220,7 @@ fun PostCard(
     onComments: (String) -> Unit = onOpenPost,
 ) {
     val ctx = LocalContext.current
+    var sharing by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -233,12 +234,13 @@ fun PostCard(
             ) {
                 Avatar(post.ownerHash, net.token, 42.dp)
                 Column {
-                    Text(
+                    NameWithBadge(
                         post.ownerName.ifBlank { post.ownerHash },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        post.ownerVerified,
+                        MaterialTheme.typography.titleSmall,
+                        FontWeight.Bold,
                     )
-                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at))
+                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · 📍 " + it } ?: ""))
                 }
             }
             if (post.hasImage) {
@@ -260,9 +262,13 @@ fun PostCard(
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     TextButton(onClick = { onComments(post.id) }) { Text("💬 " + post.comments) }
                 }
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    TextButton(onClick = { sharing = true }) { Text("📨") }
+                }
             }
         }
     }
+    if (sharing) SendPostDialog(net, post.id) { sharing = false }
 }
 
 /** A track with words only, shown as a coloured square in the grid. */
@@ -464,6 +470,7 @@ fun PostScreen(
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var reportingPost by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
 
     LaunchedEffect(postId) {
         val r = net.get("/candy/post?id=" + Uri.encode(postId))
@@ -501,12 +508,13 @@ fun PostScreen(
                             ) {
                                 Avatar(p.ownerHash, net.token, 42.dp)
                                 Column {
-                                    Text(
+                                    NameWithBadge(
                                         p.ownerName.ifBlank { p.ownerHash },
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
+                                        p.ownerVerified,
+                                        MaterialTheme.typography.titleSmall,
+                                        FontWeight.Bold,
                                     )
-                                    Muted(p.ownerHash + " · " + agoShort(ctx, p.at))
+                                    Muted(p.ownerHash + " · " + agoShort(ctx, p.at) + (p.location?.let { " · 📍 " + it } ?: ""))
                                 }
                             }
                             Box {
@@ -547,10 +555,14 @@ fun PostScreen(
                             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                                 TextButton(onClick = { onOpenComments(p.id) }) { Text("💬 " + p.comments) }
                             }
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                TextButton(onClick = { sharing = true }) { Text("📨") }
+                            }
                         }
                     }
                 }
 
+                if (sharing) SendPostDialog(net, p.id) { sharing = false }
                 if (confirmDelete) {
                     AlertDialog(
                         onDismissRequest = { confirmDelete = false },

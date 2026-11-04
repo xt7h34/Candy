@@ -108,10 +108,11 @@ fun CommentsSheet(
                     ) {
                         Avatar(c.ownerHash, net.token, 32.dp, 0, Modifier.clickable { onOpenProfile(c.ownerHash) })
                         Column(Modifier.weight(1f)) {
-                            Text(
+                            NameWithBadge(
                                 c.ownerName.ifBlank { c.ownerHash },
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
+                                c.ownerVerified,
+                                MaterialTheme.typography.labelLarge,
+                                FontWeight.Bold,
                             )
                             Text(
                                 taggedText(c.text, MaterialTheme.colorScheme.primary),
