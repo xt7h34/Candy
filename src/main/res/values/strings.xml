@@ -186,4 +186,8 @@
     <string name="loop_send_title">Send this loop to</string>
     <string name="loop_send_hash">Or type a hash</string>
     <string name="loop_sent">Sent</string>
+    <string name="ago_now">now</string>
+    <string name="ago_m">%1$dm</string>
+    <string name="ago_h">%1$dh</string>
+    <string name="ago_d">%1$dd</string>
 </resources>

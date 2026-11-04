@@ -1,17 +1,26 @@
 package com.candy
 
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -26,21 +35,114 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 private const val VIBE_LIMIT_FALLBACK = 160
 
+private val LoopCardW = 120.dp
+private val LoopCardH = 176.dp
+
+/** Reports a smaller height than it really has and draws [amount] higher, so it overlaps what is above. */
+private fun Modifier.overlapUp(amount: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val up = amount.roundToPx()
+    layout(placeable.width, maxOf(placeable.height - up, 0)) { placeable.place(0, -up) }
+}
+
+/** The loops of one person as tall cards across the top, each with how long ago it was posted. */
+@Composable
+private fun LoopCards(net: Net, hash: String, refreshKey: Int, onOpen: (String) -> Unit) {
+    val ctx = LocalContext.current
+    var loops by remember { mutableStateOf<List<Post>>(emptyList()) }
+
+    LaunchedEffect(hash, refreshKey) {
+        // an account keeps at most 20 loops, which is three pages
+        val all = ArrayList<Post>()
+        var before: Long? = null
+        var pages = 0
+        while (pages < 3) {
+            val q = "/candy/loops?hash=" + Uri.encode(bareHash(hash)) + (if (before != null) "&before=$before" else "")
+            val r = net.get(q)
+            if (!r.ok) break
+            all.addAll(r.body?.optJSONArray("items").toPosts())
+            before = if (r.body?.isNull("next") == false) r.body?.optLong("next") else null
+            pages++
+            if (before == null) break
+        }
+        loops = all
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(LoopCardH + 32.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), Color.Transparent),
+                ),
+            ),
+    ) {
+        if (loops.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for (l in loops) {
+                    Box(
+                        Modifier
+                            .width(LoopCardW)
+                            .height(LoopCardH)
+                            .clip(RoundedCornerShape(26.dp))
+                            .clickable { onOpen(l.id) },
+                    ) {
+                        PostImage(l.id, net.token, true, LoopCardW / LoopCardH)
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+                                ),
+                            ),
+                        )
+                        Text(
+                            agoShort(ctx, l.at),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                        )
+                        Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(10.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CountsRow(user: CUser, onFollowers: (() -> Unit)?, onFollowing: (() -> Unit)?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+    val line = MaterialTheme.colorScheme.outlineVariant
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(user.posts.toString(), style = MaterialTheme.typography.titleLarge)
             Muted(stringResource(R.string.prof_posts))
         }
+        Box(Modifier.width(1.dp).height(36.dp).background(line))
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.then(if (onFollowers != null) Modifier.clickable { onFollowers() } else Modifier),
@@ -48,6 +150,7 @@ private fun CountsRow(user: CUser, onFollowers: (() -> Unit)?, onFollowing: (() 
             Text(user.followers.toString(), style = MaterialTheme.typography.titleLarge)
             Muted(stringResource(R.string.prof_followers))
         }
+        Box(Modifier.width(1.dp).height(36.dp).background(line))
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.then(if (onFollowing != null) Modifier.clickable { onFollowing() } else Modifier),
@@ -61,13 +164,19 @@ private fun CountsRow(user: CUser, onFollowers: (() -> Unit)?, onFollowing: (() 
 /** The part both profiles share: name, hash, vibe and join date. */
 @Composable
 private fun ProfileInfo(u: CUser) {
-    Text(u.name.ifBlank { u.hash }, style = MaterialTheme.typography.headlineSmall)
-    Text(u.hash, color = MaterialTheme.colorScheme.primary)
+    Text(
+        u.name.ifBlank { u.hash },
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+    )
+    Text(u.hash, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
     if (u.followsMe && !u.isMe) Muted(stringResource(R.string.prof_follows_you))
     val vibe = u.vibe
     Text(
         vibe ?: stringResource(R.string.prof_no_vibe),
         style = MaterialTheme.typography.bodyLarge,
+        textAlign = TextAlign.Center,
         color = if (vibe != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
     )
     val joined = u.joinDate
@@ -110,16 +219,19 @@ fun ProfileScreen(
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(hash, onBack)
-        Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (loading && user == null) Loading()
-            ErrorText(error)
-            val u = user
-            if (u != null) {
-                Avatar(u.hash, net.token, 96.dp)
+        if (loading && user == null) Loading()
+        if (error.isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
+        val u = user
+        if (u != null) {
+            LoopCards(net, u.hash, reload) { id -> onOpenLoop(u.hash, id) }
+            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
+                Avatar(u.hash, net.token, 96.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
+            }
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 ProfileInfo(u)
                 CountsRow(u, null, null)
                 if (!u.isMe) {
@@ -134,19 +246,25 @@ fun ProfileScreen(
                         }
                     }
                     if (u.followedByMe) {
-                        OutlinedButton(onClick = toggle, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.prof_unfollow))
-                        }
+                        OutlinedButton(
+                            onClick = toggle,
+                            enabled = !busy,
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.prof_unfollow)) }
                     } else {
-                        Button(onClick = toggle, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.prof_follow))
-                        }
+                        Button(
+                            onClick = toggle,
+                            enabled = !busy,
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.prof_follow)) }
                     }
-                }
-                if (!u.isMe) {
-                    OutlinedButton(onClick = { onMessage(u.hash) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.prof_message))
-                    }
+                    OutlinedButton(
+                        onClick = { onMessage(u.hash) },
+                        shape = CircleShape,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.prof_message)) }
                     TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.post_report)) }
                     if (notice.isNotEmpty()) Muted(notice)
                 }
@@ -156,7 +274,6 @@ fun ProfileScreen(
                     for (d in drifts) DriftCard(d, net.token, null)
                 }
                 PostsSection(net, u.hash, reload, onOpenPost)
-                LoopsSection(net, u.hash, reload) { id -> onOpenLoop(u.hash, id) }
                 if (reporting) {
                     ReportDialog(
                         onSend = { reason ->
@@ -231,99 +348,109 @@ fun MeScreen(
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        ErrorText(error)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val data = me
         if (data == null) {
-            if (error.isEmpty()) Loading()
+            if (error.isEmpty()) Loading() else Column(Modifier.padding(16.dp)) { ErrorText(error) }
         } else {
             val u = data.toUser()
             val vibeMax = data.optInt("vibeMax", VIBE_LIMIT_FALLBACK)
-            AvatarEditor(net, u.hash, data.optJSONObject("avatar")) { reload++ }
-            ProfileInfo(u)
-            OutlinedButton(onClick = { editingVibe = true }) { Text(stringResource(R.string.prof_edit_vibe)) }
-            CountsRow(u, { onUsers("followers") }, { onUsers("following") })
 
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle(stringResource(R.string.prof_drifts))
-                val drifts = data.optJSONArray("drifts").toDrifts()
-                if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
-                for (d in drifts) DriftCard(d, net.token, null)
-                Button(onClick = { composing = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.prof_post_drift))
-                }
+            LoopCards(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
+            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
+                AvatarEditor(net, u.hash, data.optJSONObject("avatar")) { reload++ }
             }
 
-            Button(onClick = onNewPost, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.feed_new_post))
-            }
-            PostsSection(net, null, reload + refreshKey, onOpenPost)
-            LoopsSection(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
-
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                OutlinedButton(onClick = onBubbles, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.prof_bubbles))
-                }
-                OutlinedButton(onClick = onVisits, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.prof_visits))
-                }
-                OutlinedButton(onClick = onGrowth, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.prof_growth))
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(stringResource(R.string.prof_show_join))
-                Switch(
-                    checked = data.optBoolean("showJoinDate", true),
-                    onCheckedChange = { on ->
-                        scope.launch {
-                            val r = net.post("/candy/joindate", JSONObject().put("visible", on))
-                            if (r.ok) reload++ else error = r.message(ctx)
-                        }
-                    },
-                )
-            }
+                ErrorText(error)
+                ProfileInfo(u)
+                CountsRow(u, { onUsers("followers") }, { onUsers("following") })
+                OutlinedButton(onClick = { editingVibe = true }, shape = CircleShape) {
+                    Text("✏️  " + stringResource(R.string.prof_edit_vibe))
+                }
 
-            UpdateSection()
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle(stringResource(R.string.prof_drifts))
+                    val drifts = data.optJSONArray("drifts").toDrifts()
+                    if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
+                    for (d in drifts) DriftCard(d, net.token, null)
+                    FilledTonalButton(
+                        onClick = { composing = true },
+                        shape = CircleShape,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.prof_post_drift)) }
+                }
 
-            TextButton(onClick = onSignOut) { Text(stringResource(R.string.prof_signout)) }
+                Button(onClick = onNewPost, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feed_new_post))
+                }
+                PostsSection(net, null, reload + refreshKey, onOpenPost)
 
-            if (editingVibe) {
-                VibeDialog(
-                    initial = u.vibe.orEmpty(),
-                    max = vibeMax,
-                    onSave = { text ->
-                        scope.launch {
-                            val r = net.post("/candy/vibe", JSONObject().put("text", text))
-                            editingVibe = false
-                            if (r.ok) reload++ else error = r.message(ctx)
-                        }
-                    },
-                    onClear = {
-                        scope.launch {
-                            val r = net.post("/candy/vibe/clear")
-                            editingVibe = false
-                            if (r.ok) reload++ else error = r.message(ctx)
-                        }
-                    },
-                    onDismiss = { editingVibe = false },
-                )
-            }
-            if (composing) {
-                DriftComposer(
-                    net = net,
-                    onDismiss = { composing = false },
-                    onPosted = { composing = false; reload++ },
-                )
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = onBubbles, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.prof_bubbles))
+                    }
+                    OutlinedButton(onClick = onVisits, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.prof_visits))
+                    }
+                    OutlinedButton(onClick = onGrowth, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.prof_growth))
+                    }
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.prof_show_join))
+                    Switch(
+                        checked = data.optBoolean("showJoinDate", true),
+                        onCheckedChange = { on ->
+                            scope.launch {
+                                val r = net.post("/candy/joindate", JSONObject().put("visible", on))
+                                if (r.ok) reload++ else error = r.message(ctx)
+                            }
+                        },
+                    )
+                }
+
+                UpdateSection()
+
+                TextButton(onClick = onSignOut) { Text(stringResource(R.string.prof_signout)) }
+
+                if (editingVibe) {
+                    VibeDialog(
+                        initial = u.vibe.orEmpty(),
+                        max = vibeMax,
+                        onSave = { text ->
+                            scope.launch {
+                                val r = net.post("/candy/vibe", JSONObject().put("text", text))
+                                editingVibe = false
+                                if (r.ok) reload++ else error = r.message(ctx)
+                            }
+                        },
+                        onClear = {
+                            scope.launch {
+                                val r = net.post("/candy/vibe/clear")
+                                editingVibe = false
+                                if (r.ok) reload++ else error = r.message(ctx)
+                            }
+                        },
+                        onDismiss = { editingVibe = false },
+                    )
+                }
+                if (composing) {
+                    DriftComposer(
+                        net = net,
+                        onDismiss = { composing = false },
+                        onPosted = { composing = false; reload++ },
+                    )
+                }
             }
         }
     }

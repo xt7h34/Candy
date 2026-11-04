@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -53,6 +55,7 @@ fun FeedScreen(
     refreshKey: Int,
     onOpen: (String) -> Unit,
     onOpenPost: (String) -> Unit,
+    onOpenComments: (String) -> Unit,
     onNewPost: () -> Unit,
     onOpenStory: (String) -> Unit,
     onOpenCamera: () -> Unit,
@@ -144,7 +147,7 @@ fun FeedScreen(
                 }
             }
         }
-        items(posts) { PostCard(net, it, onOpenPost, onOpen) }
+        items(posts) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
         val more = next
         if (more != null) {
             item {
@@ -204,6 +207,8 @@ fun DriftCard(d: Drift, token: String, onOpen: ((String) -> Unit)?) {
     val ctx = LocalContext.current
     val tappable = onOpen != null && d.ownerHash.isNotEmpty()
     Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier
             .fillMaxWidth()
             .then(if (tappable) Modifier.clickable { onOpen?.invoke(d.ownerHash) } else Modifier),

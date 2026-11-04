@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -210,7 +211,10 @@ fun AvatarEditor(net: Net, myHash: String, avatar: JSONObject?, onChanged: () ->
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(myHash, net.token, 96.dp, version, Modifier.clickable(enabled = !busy) { open = true })
+        Avatar(
+            myHash, net.token, 96.dp, version,
+            Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable(enabled = !busy) { open = true },
+        )
         TextButton(onClick = { open = true }, enabled = !busy) { Text(stringResource(R.string.avatar_change)) }
         if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         if (error.isNotBlank()) {

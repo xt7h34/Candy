@@ -12,11 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -167,6 +163,8 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     var pending by remember { mutableStateOf<Picked?>(null) }
     // unread messages, for the badge on the Chats tab
     var unread by remember { mutableStateOf(0) }
+    // the track or loop whose comments sheet is open
+    var commentsFor by remember { mutableStateOf<String?>(null) }
 
     UpdatePrompt()
 
@@ -248,7 +246,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                     refreshKey = refreshTick,
                     onBack = back,
                     onOpenProfile = ::openProfile,
-                    onOpenComments = { stack.add(Dest.OpenPost(it)) },
+                    onOpenComments = { commentsFor = it },
                 )
                 is Dest.Story -> StoryViewer(
                     net = net,
@@ -261,41 +259,14 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     } else {
         Scaffold(
             bottomBar = {
-                if (stack.isEmpty()) {
-                    NavigationBar {
-                        NavigationBarItem(
-                            selected = tab == 0,
-                            onClick = { tab = 0 },
-                            icon = { Text("🍬") },
-                            label = { Text(stringResource(R.string.nav_feed)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == 1,
-                            onClick = { tab = 1 },
-                            icon = { Text("🎬") },
-                            label = { Text(stringResource(R.string.nav_loops)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == 2,
-                            onClick = { tab = 2 },
-                            icon = { Text("🔎") },
-                            label = { Text(stringResource(R.string.nav_search)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == 3,
-                            onClick = { tab = 3 },
-                            icon = {
-                                BadgedBox(badge = { if (unread > 0) Badge { Text(unread.toString()) } }) { Text("💬") }
-                            },
-                            label = { Text(stringResource(R.string.nav_chats)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == 4,
-                            onClick = { tab = 4 },
-                            icon = { Text("👤") },
-                            label = { Text(stringResource(R.string.nav_me)) },
-                        )
-                    }
+                // the bar stays on screen over profiles and lists, with the tab you came from selected;
+                // only the chat and the new-track form hide it, because they have a keyboard
+                if (top == null || !(top is Dest.Chat || top is Dest.NewPost)) {
+                    FloatingNavBar(
+                        selected = tab,
+                        unread = unread,
+                        onSelect = { stack.clear(); tab = it },
+                    )
                 }
             },
         ) { pad ->
@@ -343,6 +314,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             refreshKey = refreshTick,
                             onOpen = ::openProfile,
                             onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                            onOpenComments = { commentsFor = it },
                             onNewPost = { pending = null; stack.add(Dest.NewPost) },
                             onOpenStory = { stack.add(Dest.Story(it)) },
                             onOpenCamera = { stack.add(Dest.Camera) },
@@ -354,7 +326,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             refreshKey = refreshTick,
                             onBack = null,
                             onOpenProfile = ::openProfile,
-                            onOpenComments = { stack.add(Dest.OpenPost(it)) },
+                            onOpenComments = { commentsFor = it },
                         )
                         2 -> SearchScreen(net, ::openProfile)
                         3 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
@@ -374,5 +346,15 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                 }
             }
         }
+    }
+
+    val sheetFor = commentsFor
+    if (sheetFor != null) {
+        CommentsSheet(
+            net = net,
+            postId = sheetFor,
+            onDismiss = { commentsFor = null },
+            onOpenProfile = { commentsFor = null; openProfile(it) },
+        )
     }
 }

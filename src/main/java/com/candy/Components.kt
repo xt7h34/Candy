@@ -1,6 +1,12 @@
 package com.candy
 
 import android.content.Context
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -120,4 +126,29 @@ fun PollingEffect(key: Any?, intervalMs: Long, block: suspend () -> Unit) {
             }
         }
     }
+}
+
+/** "now", "5m", "3h" or "2d": how long ago something was posted. */
+fun agoShort(c: Context, at: Long): String {
+    val mins = ((System.currentTimeMillis() - at) / 60000).toInt().coerceAtLeast(0)
+    return when {
+        mins < 1 -> c.getString(R.string.ago_now)
+        mins < 60 -> c.getString(R.string.ago_m, mins)
+        mins < 60 * 24 -> c.getString(R.string.ago_h, mins / 60)
+        else -> c.getString(R.string.ago_d, mins / (60 * 24))
+    }
+}
+
+// A track tag starts with $ (the # is taken by the account hash), then a letter.
+private val TAG_REGEX = Regex("\\$\\p{L}[\\p{L}\\p{N}_]*")
+
+/** The text with every $tag in [color], so tags stand out from the rest of the caption. */
+fun taggedText(text: String, color: Color): AnnotatedString = buildAnnotatedString {
+    var last = 0
+    for (m in TAG_REGEX.findAll(text)) {
+        append(text.substring(last, m.range.first))
+        withStyle(SpanStyle(color = color, fontWeight = FontWeight.SemiBold)) { append(m.value) }
+        last = m.range.last + 1
+    }
+    append(text.substring(last))
 }

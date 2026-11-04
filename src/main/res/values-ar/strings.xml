@@ -186,4 +186,8 @@
     <string name="loop_send_title">ابعت اللوب ده لـ</string>
     <string name="loop_send_hash">أو اكتب هاش</string>
     <string name="loop_sent">اتبعت</string>
+    <string name="ago_now">الآن</string>
+    <string name="ago_m">%1$d د</string>
+    <string name="ago_h">%1$d س</string>
+    <string name="ago_d">%1$d ي</string>
 </resources>

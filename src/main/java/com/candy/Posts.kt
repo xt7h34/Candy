@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -200,45 +205,56 @@ fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: In
     ) { Text((if (liked) "❤️" else "🤍") + " " + likes) }
 }
 
-/** A post in the feed: who, the picture, like and comment buttons, and the caption. */
+/** A track in the feed: who and when, the picture, the caption, then like and comment. */
 @Composable
-fun PostCard(net: Net, post: Post, onOpenPost: (String) -> Unit, onOpenProfile: (String) -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column {
+fun PostCard(
+    net: Net,
+    post: Post,
+    onOpenPost: (String) -> Unit,
+    onOpenProfile: (String) -> Unit,
+    onComments: (String) -> Unit = onOpenPost,
+) {
+    val ctx = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
-                Modifier.fillMaxWidth().clickable { onOpenProfile(post.ownerHash) }.padding(12.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { onOpenProfile(post.ownerHash) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Avatar(post.ownerHash, net.token, 36.dp)
+                Avatar(post.ownerHash, net.token, 42.dp)
                 Column {
                     Text(
                         post.ownerName.ifBlank { post.ownerHash },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
-                    Muted(post.ownerHash)
+                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at))
                 }
             }
             if (post.hasImage) {
-                PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
-            } else if (post.caption.isNotBlank()) {
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
+                    PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
+                }
+            }
+            if (post.caption.isNotBlank()) {
                 Text(
-                    post.caption,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.fillMaxWidth().clickable { onOpenPost(post.id) }.padding(horizontal = 12.dp, vertical = 4.dp),
+                    taggedText(post.caption, MaterialTheme.colorScheme.primary),
+                    style = if (post.hasImage) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth().clickable { onOpenPost(post.id) }.padding(horizontal = 4.dp),
                 )
             }
-            Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                LikeButton(net, post.id, post.liked, post.likes)
-                TextButton(onClick = { onOpenPost(post.id) }) { Text("💬 " + post.comments) }
-            }
-            if (post.hasImage && post.caption.isNotBlank()) {
-                Text(
-                    post.caption,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    LikeButton(net, post.id, post.liked, post.likes)
+                }
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    TextButton(onClick = { onComments(post.id) }) { Text("💬 " + post.comments) }
+                }
             }
         }
     }
@@ -496,7 +512,12 @@ fun PostScreen(
                         TextButton(onClick = { reportingPost = true }) { Text(stringResource(R.string.post_report)) }
                     }
                 }
-                if (p.caption.isNotBlank()) Text(p.caption, style = MaterialTheme.typography.bodyLarge)
+                if (p.caption.isNotBlank()) {
+                    Text(
+                        taggedText(p.caption, MaterialTheme.colorScheme.primary),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
 
                 SectionTitle(stringResource(R.string.post_comments_title))
                 if (comments.isEmpty()) Muted(stringResource(R.string.post_no_comments))
