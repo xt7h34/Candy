@@ -2,6 +2,7 @@ package com.candy
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +62,7 @@ fun UsersScreen(net: Net, kind: String, onBack: () -> Unit, onOpen: (String) -> 
             onBack,
         )
         LazyColumn(
+            contentPadding = PaddingValues(bottom = LocalBarInset.current),
             modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -116,7 +118,7 @@ fun BubblesScreen(net: Net, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.bub_title), onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).padding(bottom = LocalBarInset.current),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,6 +230,7 @@ fun VisitsScreen(net: Net, onBack: () -> Unit, onOpen: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.visits_title), onBack)
         LazyColumn(
+            contentPadding = PaddingValues(bottom = LocalBarInset.current),
             modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -275,7 +278,7 @@ fun GrowthScreen(net: Net, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.growth_title), onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).padding(bottom = LocalBarInset.current),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ErrorText(error)

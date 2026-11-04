@@ -1,6 +1,9 @@
 package com.candy
 
+import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,9 +38,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -58,6 +64,30 @@ private fun Modifier.overlapUp(amount: Dp): Modifier = layout { measurable, cons
     val placeable = measurable.measure(constraints)
     val up = amount.roundToPx()
     layout(placeable.width, maxOf(placeable.height - up, 0)) { placeable.place(0, -up) }
+}
+
+/** The first loop, blurred, behind the cards. Blur only exists from Android 12, so older phones keep the plain gradient. */
+@Composable
+private fun LoopBackdrop(net: Net, id: String) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    var bmp by remember(id) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(id) { bmp = MediaCache.load(net.token, id, true) }
+    val b = bmp
+    if (b != null) {
+        Image(
+            bitmap = b.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().blur(32.dp),
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = 0.45f), MaterialTheme.colorScheme.background),
+                ),
+            ),
+        )
+    }
 }
 
 /** The loops of one person as tall cards across the top, each with how long ago it was posted. */
@@ -94,6 +124,7 @@ private fun LoopCards(net: Net, hash: String, refreshKey: Int, onOpen: (String) 
             ),
     ) {
         if (loops.isNotEmpty()) {
+            LoopBackdrop(net, loops[0].id)
             Row(
                 Modifier
                     .fillMaxSize()
@@ -228,7 +259,7 @@ fun ProfileScreen(
                 Avatar(u.hash, net.token, 96.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
             }
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -362,7 +393,7 @@ fun MeScreen(
             }
 
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {

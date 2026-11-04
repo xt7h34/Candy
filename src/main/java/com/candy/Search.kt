@@ -3,6 +3,7 @@ package com.candy
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,6 +61,7 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
     }
 
     LazyColumn(
+        contentPadding = PaddingValues(bottom = LocalBarInset.current),
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

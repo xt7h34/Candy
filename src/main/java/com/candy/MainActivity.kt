@@ -10,12 +10,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -26,7 +28,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -193,6 +198,11 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
     val fullScreen = top is Dest.Camera || top is Dest.StageEdit || top is Dest.LoopEdit || top is Dest.Story || top is Dest.LoopPlayer
 
+    // the floating bar is on every screen except the chat and the new-track form, which have a keyboard
+    val showBar = top == null || !(top is Dest.Chat || top is Dest.NewPost)
+    var barPx by remember { mutableStateOf(0) }
+    val barInset = if (showBar) with(LocalDensity.current) { barPx.toDp() } else 0.dp
+
     if (fullScreen) {
         // the camera, the editor and the stage viewer use the whole screen
         Box(Modifier.fillMaxSize()) {
@@ -258,19 +268,20 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
         }
     } else {
         Scaffold(
-            bottomBar = {
-                // the bar stays on screen over profiles and lists, with the tab you came from selected;
-                // only the chat and the new-track form hide it, because they have a keyboard
-                if (top == null || !(top is Dest.Chat || top is Dest.NewPost)) {
-                    FloatingNavBar(
-                        selected = tab,
-                        unread = unread,
-                        onSelect = { stack.clear(); tab = it },
-                    )
-                }
-            },
         ) { pad ->
-            Box(Modifier.padding(pad).fillMaxSize()) {
+            // with the bar on screen the content runs underneath it, and each screen leaves room at its end
+            val dir = LocalLayoutDirection.current
+            val contentPad = if (showBar) {
+                PaddingValues(
+                    start = pad.calculateStartPadding(dir),
+                    top = pad.calculateTopPadding(),
+                    end = pad.calculateEndPadding(dir),
+                )
+            } else {
+                pad
+            }
+            Box(Modifier.padding(contentPad).fillMaxSize()) {
+              CompositionLocalProvider(LocalBarInset provides barInset) {
                 if (top != null) {
                     when (top) {
                         is Dest.Profile -> ProfileScreen(
@@ -286,6 +297,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             postId = top.id,
                             onBack = back,
                             onOpenProfile = ::openProfile,
+                            onOpenComments = { commentsFor = it },
                             onChanged = { refreshTick++; stack.removeAt(stack.lastIndex) },
                         )
                         Dest.NewPost -> NewPostScreen(
@@ -319,7 +331,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             onOpenStory = { stack.add(Dest.Story(it)) },
                             onOpenCamera = { stack.add(Dest.Camera) },
                         )
-                        1 -> LoopsScreen(
+                        1 -> Box(Modifier.fillMaxSize().padding(bottom = barInset)) { LoopsScreen(
                             net = net,
                             hash = null,
                             startId = null,
@@ -327,7 +339,7 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                             onBack = null,
                             onOpenProfile = ::openProfile,
                             onOpenComments = { commentsFor = it },
-                        )
+                        ) }
                         2 -> SearchScreen(net, ::openProfile)
                         3 -> ChatsScreen(net, refreshTick) { stack.add(Dest.Chat(it)) }
                         else -> MeScreen(
@@ -344,6 +356,15 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                         )
                     }
                 }
+              }
+              if (showBar) {
+                FloatingNavBar(
+                    selected = tab,
+                    unread = unread,
+                    onSelect = { stack.clear(); tab = it },
+                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barPx = it.height },
+                )
+              }
             }
         }
     }

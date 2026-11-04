@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
@@ -435,154 +437,112 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
     }
 }
 
-// ───────────────────────── One post, with its comments ─────────────────────────
+// ───────────────────────── One post ─────────────────────────
 
+/** A track on its own: the same card as in the feed, bigger. Comments open in the sheet. */
 @Composable
 fun PostScreen(
     net: Net,
     postId: String,
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
+    onOpenComments: (String) -> Unit,
     onChanged: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var post by remember { mutableStateOf<Post?>(null) }
-    var comments by remember { mutableStateOf<List<Comment>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf("") }
-    var reload by remember { mutableStateOf(0) }
-    var newComment by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var reportingPost by remember { mutableStateOf(false) }
-    var reportingComment by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(postId, reload) {
+    LaunchedEffect(postId) {
         val r = net.get("/candy/post?id=" + Uri.encode(postId))
         loading = false
         if (r.ok) {
             post = r.body?.toPost()
-            comments = r.body?.optJSONArray("commentList").toComments()
             error = ""
         } else {
             error = r.message(ctx)
         }
     }
 
-    fun report(type: String, id: String, reason: String, extra: JSONObject? = null) {
-        scope.launch {
-            val body = JSONObject().put("type", type).put("id", id).put("reason", reason)
-            if (extra != null) body.put("postId", extra.optString("postId"))
-            val r = net.post("/candy/report", body)
-            if (r.ok) notice = ctx.getString(R.string.report_sent) else error = r.message(ctx)
-        }
-    }
-
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.post_title), onBack)
         if (loading) Loading()
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.padding(horizontal = 16.dp).padding(bottom = LocalBarInset.current),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             ErrorText(error)
             if (notice.isNotEmpty()) Muted(notice)
             val p = post
             if (p != null) {
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpenProfile(p.ownerHash) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
-                    Avatar(p.ownerHash, net.token, 40.dp)
-                    Column {
-                        Text(
-                            p.ownerName.ifBlank { p.ownerHash },
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Muted(p.ownerHash)
-                    }
-                }
-                if (p.hasImage) PostImage(p.id, net.token, false, aspectOf(p))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    LikeButton(net, p.id, p.liked, p.likes)
-                    if (p.mine) {
-                        TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.post_delete)) }
-                    } else {
-                        TextButton(onClick = { reportingPost = true }) { Text(stringResource(R.string.post_report)) }
-                    }
-                }
-                if (p.caption.isNotBlank()) {
-                    Text(
-                        taggedText(p.caption, MaterialTheme.colorScheme.primary),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-
-                SectionTitle(stringResource(R.string.post_comments_title))
-                if (comments.isEmpty()) Muted(stringResource(R.string.post_no_comments))
-                for (c in comments) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Avatar(c.ownerHash, net.token, 32.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                c.ownerName.ifBlank { c.ownerHash },
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(c.text, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        if (c.canDelete) {
-                            TextButton(
-                                onClick = {
-                                    scope.launch {
-                                        val r = net.post(
-                                            "/candy/comment/delete",
-                                            JSONObject().put("postId", p.id).put("commentId", c.id),
-                                        )
-                                        if (r.ok) reload++ else error = r.message(ctx)
-                                    }
-                                },
-                            ) { Text(stringResource(R.string.post_delete)) }
-                        } else {
-                            TextButton(onClick = { reportingComment = c.id }) { Text(stringResource(R.string.post_report)) }
-                        }
-                    }
-                }
-
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Field(
-                        stringResource(R.string.post_comment_hint), newComment, { newComment = it.take(COMMENT_LIMIT) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                val r = net.post(
-                                    "/candy/comment",
-                                    JSONObject().put("id", p.id).put("text", newComment.trim()),
-                                )
-                                busy = false
-                                if (r.ok) {
-                                    newComment = ""
-                                    error = ""
-                                    reload++
-                                } else {
-                                    error = r.message(ctx)
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable { onOpenProfile(p.ownerHash) },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Avatar(p.ownerHash, net.token, 42.dp)
+                                Column {
+                                    Text(
+                                        p.ownerName.ifBlank { p.ownerHash },
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Muted(p.ownerHash + " · " + agoShort(ctx, p.at))
                                 }
                             }
-                        },
-                        enabled = !busy && newComment.isNotBlank(),
-                    ) { Text(stringResource(R.string.post_send)) }
+                            Box {
+                                TextButton(onClick = { menu = true }) {
+                                    Text("⋮", style = MaterialTheme.typography.titleLarge)
+                                }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    if (p.mine) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.post_delete)) },
+                                            onClick = { menu = false; confirmDelete = true },
+                                        )
+                                    } else {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.post_report)) },
+                                            onClick = { menu = false; reportingPost = true },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (p.hasImage) {
+                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
+                                PostImage(p.id, net.token, false, aspectOf(p))
+                            }
+                        }
+                        if (p.caption.isNotBlank()) {
+                            Text(
+                                taggedText(p.caption, MaterialTheme.colorScheme.primary),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                LikeButton(net, p.id, p.liked, p.likes)
+                            }
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                TextButton(onClick = { onOpenComments(p.id) }) { Text("💬 " + p.comments) }
+                            }
+                        }
+                    }
                 }
 
                 if (confirmDelete) {
@@ -607,18 +567,17 @@ fun PostScreen(
                 }
                 if (reportingPost) {
                     ReportDialog(
-                        onSend = { reportingPost = false; report("post", p.id, it) },
-                        onDismiss = { reportingPost = false },
-                    )
-                }
-                val reportedComment = reportingComment
-                if (reportedComment != null) {
-                    ReportDialog(
-                        onSend = {
-                            reportingComment = null
-                            report("comment", reportedComment, it, JSONObject().put("postId", p.id))
+                        onSend = { reason ->
+                            reportingPost = false
+                            scope.launch {
+                                val r = net.post(
+                                    "/candy/report",
+                                    JSONObject().put("type", "post").put("id", p.id).put("reason", reason),
+                                )
+                                if (r.ok) notice = ctx.getString(R.string.report_sent) else error = r.message(ctx)
+                            }
                         },
-                        onDismiss = { reportingComment = null },
+                        onDismiss = { reportingPost = false },
                     )
                 }
             }
