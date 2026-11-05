@@ -2,6 +2,16 @@ package com.candy
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.widget.Toast
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
@@ -74,11 +84,11 @@ object MediaCache {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
 
-    suspend fun load(token: String, id: String, thumb: Boolean): Bitmap? {
-        val key = id + (if (thumb) "t" else "f")
+    suspend fun load(token: String, id: String, thumb: Boolean, index: Int = 0): Bitmap? {
+        val key = id + (if (thumb) "t" else "f") + (if (index > 0) "#$index" else "")
         val cached = mem.get(key)
         if (cached != null) return cached
-        val path = "/candy/media?id=" + Uri.encode(id) + (if (thumb) "&thumb=1" else "")
+        val path = "/candy/media?id=" + Uri.encode(id) + (if (thumb) "&thumb=1" else "") + (if (index > 0) "&i=$index" else "")
         val r = CandyApi.fetchBytes(path, token)
         val bytes = r.bytes
         if (r.status in 200..299 && bytes != null && bytes.isNotEmpty()) {
@@ -96,11 +106,11 @@ object MediaCache {
 
 /** A post picture that keeps its place while it loads. [thumb] is the small square one used in grids. */
 @Composable
-fun PostImage(id: String, token: String, thumb: Boolean, aspect: Float, modifier: Modifier = Modifier) {
-    var bmp by remember(id, thumb) { mutableStateOf<Bitmap?>(null) }
+fun PostImage(id: String, token: String, thumb: Boolean, aspect: Float, modifier: Modifier = Modifier, index: Int = 0) {
+    var bmp by remember(id, thumb, index) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(id, thumb, token) {
-        bmp = MediaCache.load(token, id, thumb)
+    LaunchedEffect(id, thumb, token, index) {
+        bmp = MediaCache.load(token, id, thumb, index)
     }
 
     Box(
@@ -118,6 +128,86 @@ fun PostImage(id: String, token: String, thumb: Boolean, aspect: Float, modifier
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+/** A picture that fills whatever space it is given: cropped to fit, or whole ([crop] = false). */
+@Composable
+fun PostImageFill(id: String, token: String, thumb: Boolean, index: Int, crop: Boolean, modifier: Modifier = Modifier) {
+    var bmp by remember(id, thumb, index) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(id, thumb, token, index) {
+        bmp = MediaCache.load(token, id, thumb, index)
+    }
+
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+        val b = bmp
+        if (b != null) {
+            Image(
+                bitmap = b.asImageBitmap(),
+                contentDescription = null,
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/** A small dark pill over a picture, like "1/4" or "🖼️ 4". */
+@Composable
+private fun PicBadge(text: String, modifier: Modifier = Modifier) {
+    Surface(color = Color.Black.copy(alpha = 0.55f), shape = CircleShape, modifier = modifier) {
+        Text(
+            text,
+            color = Color.White,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** A track with several pictures in the feed: three cards fanned out, with how many there are. */
+@Composable
+private fun FanStack(net: Net, post: Post, onClick: () -> Unit) {
+    val shown = minOf(post.imageCount, 3)
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(1.05f).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (shown >= 3) FanCard(net, post, 2, 8f, 70.dp, false)
+        if (shown >= 2) FanCard(net, post, 1, -8f, (-70).dp, false)
+        FanCard(net, post, 0, 0f, 0.dp, true)
+        PicBadge("🖼️ " + post.imageCount, Modifier.align(Alignment.TopEnd).padding(8.dp))
+    }
+}
+
+@Composable
+private fun FanCard(net: Net, post: Post, index: Int, rotation: Float, shift: Dp, front: Boolean) {
+    Box(
+        Modifier
+            .fillMaxWidth(if (front) 0.66f else 0.58f)
+            .fillMaxHeight(if (front) 0.92f else 0.80f)
+            .graphicsLayer {
+                rotationZ = rotation
+                translationX = shift.toPx()
+            }
+            .clip(RoundedCornerShape(22.dp)),
+    ) {
+        // the front card is the full picture, the two behind it are the small squares
+        PostImageFill(post.id, net.token, !front, index, true)
+    }
+}
+
+/** All the pictures of one track: swipe sideways, with "2/4" on top. */
+@Composable
+private fun PostPager(net: Net, p: Post) {
+    val pager = rememberPagerState(pageCount = { p.imageCount })
+    val aspect = (p.sizes.firstOrNull() ?: 1f).coerceIn(0.75f, 1.6f)
+    Box(Modifier.fillMaxWidth().aspectRatio(aspect).clip(RoundedCornerShape(22.dp))) {
+        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+            PostImageFill(p.id, net.token, false, page, false)
+        }
+        PicBadge((pager.currentPage + 1).toString() + "/" + p.imageCount, Modifier.align(Alignment.TopEnd).padding(8.dp))
     }
 }
 
@@ -243,7 +333,9 @@ fun PostCard(
                     Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · 📍 " + it } ?: ""))
                 }
             }
-            if (post.hasImage) {
+            if (post.imageCount > 1) {
+                FanStack(net, post) { onOpenPost(post.id) }
+            } else if (post.hasImage) {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
                     PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
                 }
@@ -331,7 +423,10 @@ fun PostsSection(net: Net, hash: String?, refreshKey: Int, onOpenPost: (String) 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (p in row) {
                     if (p.hasImage) {
-                        PostImage(p.id, net.token, true, 1f, Modifier.weight(1f).clickable { onOpenPost(p.id) })
+                        Box(Modifier.weight(1f).clickable { onOpenPost(p.id) }) {
+                            PostImage(p.id, net.token, true, 1f)
+                            if (p.imageCount > 1) PicBadge("🖼️ " + p.imageCount, Modifier.align(Alignment.TopEnd).padding(4.dp))
+                        }
                     } else {
                         TextTile(p, Modifier.weight(1f).clickable { onOpenPost(p.id) })
                     }
@@ -363,41 +458,44 @@ fun ReportDialog(onSend: (String) -> Unit, onDismiss: () -> Unit) {
 
 // ───────────────────────── New post ─────────────────────────
 
+private const val MAX_TRACK_IMAGES = 6
+
+private class Photo(val bytes: ByteArray, val preview: Bitmap)
+
+/** A new track: up to six photos (the first one makes the track, the rest follow), and the caption. */
 @Composable
 fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> Unit) {
     val captionLimit = CAPTION_LIMIT
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var jpeg by remember { mutableStateOf<ByteArray?>(null) }
-    var preview by remember { mutableStateOf<Bitmap?>(null) }
+    val photos = remember { mutableStateListOf<Photo>() }
     var caption by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
 
-    // a photo that came from the camera or the gallery screen
-    LaunchedEffect(initial) {
-        if (initial != null) {
-            val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, initial) }
+    suspend fun addUris(uris: List<Uri>) {
+        for (uri in uris) {
+            if (photos.size >= MAX_TRACK_IMAGES) break
+            val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, uri) }
             if (bytes == null) {
                 error = ctx.getString(R.string.avatar_unreadable)
-            } else {
-                jpeg = bytes
-                preview = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+                continue
             }
+            val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) } ?: continue
+            photos.add(Photo(bytes, bmp))
         }
     }
 
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
+    // a photo that came from the camera or the gallery screen
+    LaunchedEffect(initial) {
+        if (initial != null) addUris(listOf(initial))
+    }
+
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) {
             scope.launch {
-                val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, uri) }
-                if (bytes == null) {
-                    error = ctx.getString(R.string.avatar_unreadable)
-                } else {
-                    error = ""
-                    jpeg = bytes
-                    preview = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-                }
+                error = ""
+                addUris(uris)
             }
         }
     }
@@ -405,18 +503,38 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.feed_new_post), onBack)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            val shown = preview
-            if (shown != null) {
-                Image(
-                    bitmap = shown.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                )
+            if (photos.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    photos.forEachIndexed { i, ph ->
+                        Box(Modifier.size(if (photos.size == 1) 240.dp else 120.dp).clip(RoundedCornerShape(16.dp))) {
+                            Image(
+                                bitmap = ph.preview.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.55f),
+                                shape = CircleShape,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).clickable(enabled = !busy) { photos.removeAt(i) },
+                            ) {
+                                Text("✕", color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+                }
             }
-            OutlinedButton(onClick = { pick.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(if (shown == null) R.string.post_pick else R.string.avatar_change))
+            OutlinedButton(
+                onClick = { pick.launch("image/*") },
+                enabled = !busy && photos.size < MAX_TRACK_IMAGES,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(if (photos.isEmpty()) R.string.post_pick else R.string.post_add_photo))
             }
+            if (photos.isNotEmpty()) Muted(stringResource(R.string.post_photos_count, photos.size, MAX_TRACK_IMAGES))
             Field(
                 stringResource(R.string.post_caption_hint), caption, { caption = it.take(captionLimit) },
                 singleLine = false,
@@ -426,20 +544,39 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
             if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Button(
                 onClick = {
-                    val bytes = jpeg
-                    if (bytes != null || caption.isNotBlank()) {
+                    val first = photos.firstOrNull()?.bytes
+                    val rest = photos.drop(1).map { it.bytes }
+                    if (first != null || caption.isNotBlank()) {
                         scope.launch {
                             busy = true
                             error = ""
                             val body = JSONObject().put("caption", caption.trim())
-                            if (bytes != null) body.put("image", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                            if (first != null) body.put("image", Base64.encodeToString(first, Base64.NO_WRAP))
                             val r = net.post("/candy/post", body)
+                            if (!r.ok) {
+                                busy = false
+                                error = r.message(ctx)
+                                return@launch
+                            }
+                            // the other photos go one by one onto the track that was just made
+                            val postId = r.body?.optJSONObject("post")?.optString("id").orEmpty()
+                            var failed = 0
+                            for (bytes in rest) {
+                                val extra = net.post(
+                                    "/candy/post/image",
+                                    JSONObject().put("id", postId).put("image", Base64.encodeToString(bytes, Base64.NO_WRAP)),
+                                )
+                                if (!extra.ok) failed++
+                            }
                             busy = false
-                            if (r.ok) onPosted() else error = r.message(ctx)
+                            if (failed > 0) {
+                                Toast.makeText(ctx, ctx.getString(R.string.post_images_partial, failed), Toast.LENGTH_LONG).show()
+                            }
+                            onPosted()
                         }
                     }
                 },
-                enabled = !busy && (jpeg != null || caption.isNotBlank()),
+                enabled = !busy && (photos.isNotEmpty() || caption.isNotBlank()),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.prof_post)) }
         }
@@ -536,7 +673,9 @@ fun PostScreen(
                                 }
                             }
                         }
-                        if (p.hasImage) {
+                        if (p.imageCount > 1) {
+                            PostPager(net, p)
+                        } else if (p.hasImage) {
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
                                 PostImage(p.id, net.token, false, aspectOf(p))
                             }

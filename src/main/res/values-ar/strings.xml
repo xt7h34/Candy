@@ -227,4 +227,7 @@
     <string name="prof_show_location">اعرض موقعي على تراكاتي (%1$s)</string>
     <string name="prof_location_hint">عشان موقعك يظهر على تراكاتك، سجّله في البوت بـ .موقعي</string>
     <string name="chat_kind_track">تراك</string>
+    <string name="post_add_photo">أضف صورة تانية</string>
+    <string name="post_photos_count">%1$d / %2$d صور</string>
+    <string name="post_images_partial">التراك اتنشر، بس %1$d صورة معرفتش تترفع</string>
 </resources>

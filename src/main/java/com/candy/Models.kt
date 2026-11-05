@@ -113,6 +113,8 @@ class Post(
     val mine: Boolean,
     val ownerVerified: Boolean = false,
     val location: String? = null,
+    val count: Int = 0,
+    val sizes: List<Float> = emptyList(),
     val ownerName: String,
     val ownerHash: String,
 )
@@ -134,6 +136,8 @@ fun JSONObject.toPost(): Post {
         mine = optBoolean("mine"),
         ownerVerified = owner?.optBoolean("verified") == true,
         location = if (isNull("location")) null else optString("location").ifEmpty { null },
+        count = optInt("count"),
+        sizes = aspectsOf(optJSONArray("images")),
         ownerName = owner?.optString("name").orEmpty(),
         ownerHash = owner?.optString("hash").orEmpty(),
     )
@@ -349,3 +353,18 @@ fun JSONArray?.toFlareFriends(): List<FlareFriend> {
     }
     return out
 }
+
+private fun aspectsOf(arr: JSONArray?): List<Float> {
+    if (arr == null) return emptyList()
+    val out = ArrayList<Float>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        val w = o.optInt("w")
+        val h = o.optInt("h")
+        if (w > 0 && h > 0) out.add(w.toFloat() / h.toFloat())
+    }
+    return out
+}
+
+/** How many pictures a track has (0 for a track with words only). */
+val Post.imageCount: Int get() = maxOf(count, if (hasImage) 1 else 0)
