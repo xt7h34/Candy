@@ -40,7 +40,7 @@ object ChatPrefs {
 }
 
 @Composable
-private fun ChoiceRow(selected: Boolean, label: String, onClick: () -> Unit) {
+internal fun ChoiceRow(selected: Boolean, label: String, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,

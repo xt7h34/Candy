@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
@@ -82,10 +84,12 @@ private class ChatThread(
     val name: String,
     val hash: String,
     val lastText: String,
+    val lastKind: String,
+    val lastDeleted: Boolean,
     val unread: Int,
 )
 
-private class ChatMsg(
+private data class ChatMsg(
     val n: Int,
     val mine: Boolean,
     val text: String,
@@ -104,7 +108,36 @@ private class ChatMsg(
     val trackCaption: String,
     val trackHasImage: Boolean,
     val trackGone: Boolean,
+    val at: Long,
+    val edited: Boolean,
+    val deleted: Boolean,
+    val myReaction: String?,
+    val theirReaction: String?,
 )
+
+/** A pinned message: which one, until when, and whether I pinned it. */
+private class PinInfo(val n: Int, val until: Long, val mine: Boolean, val msg: ChatMsg)
+
+private const val EDIT_WINDOW_MS = 15 * 60 * 1000L
+private val QUICK_REACTIONS = listOf("❤️", "😂", "😮", "😢", "👍", "🔥")
+private val MORE_REACTIONS = listOf(
+    "❤️", "😂", "😮", "😢", "👍", "🔥", "😍", "🥰", "😘", "😎", "🤔", "😅",
+    "🙏", "👏", "🎉", "💯", "😭", "😡", "🤣", "😴", "👎", "💔", "✨", "🙌",
+    "😇", "🤝", "💪", "👀", "🫶", "😬",
+)
+
+private fun msgPreview(m: ChatMsg): String = when {
+    m.stickerId != null -> "😊"
+    m.text.isNotEmpty() -> m.text
+    m.trackId != null -> "🖼️"
+    m.loopId != null -> "🎬"
+    else -> ""
+}
+
+private fun canEdit(m: ChatMsg): Boolean =
+    m.mine && !m.deleted && m.stickerId == null && m.text.isNotEmpty() && System.currentTimeMillis() - m.at <= EDIT_WINDOW_MS
+
+private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else optString(key).ifEmpty { null }
 
 private fun JSONObject.toChatMsg(): ChatMsg {
     val loop = optJSONObject("loop")
@@ -131,6 +164,11 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         trackCaption = track?.optString("caption").orEmpty(),
         trackHasImage = track?.optBoolean("hasImage") == true,
         trackGone = track?.optBoolean("gone") == true,
+        at = optLong("at"),
+        edited = !isNull("edited") && optLong("edited") > 0L,
+        deleted = optBoolean("deleted"),
+        myReaction = optJSONObject("reactions")?.nullableString("mine"),
+        theirReaction = optJSONObject("reactions")?.nullableString("theirs"),
     )
 }
 
@@ -172,6 +210,8 @@ fun ChatsScreen(
                             name = peer?.optString("name").orEmpty(),
                             hash = peer?.optString("hash").orEmpty(),
                             lastText = o.optJSONObject("last")?.optString("text").orEmpty(),
+                            lastKind = o.optJSONObject("last")?.optString("kind").orEmpty(),
+                            lastDeleted = o.optJSONObject("last")?.optBoolean("deleted") == true,
                             unread = o.optInt("unread"),
                         ),
                     )
@@ -309,7 +349,13 @@ fun ChatsScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            t.lastText.ifEmpty { "🎬" },
+                            when {
+                                t.lastDeleted -> stringResource(R.string.chat_last_deleted)
+                                t.lastText.isNotEmpty() -> t.lastText
+                                t.lastKind == "sticker" -> "😊"
+                                t.lastKind == "track" -> "🖼️"
+                                else -> "🎬"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -382,13 +428,24 @@ fun ChatScreen(
     var forwarding by remember { mutableStateOf<ChatMsg?>(null) }
     var stickerMsg by remember { mutableStateOf<ChatMsg?>(null) }
     var textSelectN by remember { mutableStateOf(-1) }
+    val pins = remember { mutableStateListOf<PinInfo>() }
+    var pinIdx by remember { mutableStateOf(0) }
+    var rev by remember { mutableStateOf(0) }
+    var deleteMode by remember { mutableStateOf("announce") }
+    var proposal by remember { mutableStateOf<Boolean?>(null) }     // null: no request, true: mine, false: theirs
+    var editing by remember { mutableStateOf<ChatMsg?>(null) }
+    var pinning by remember { mutableStateOf<ChatMsg?>(null) }
+    var deleting by remember { mutableStateOf<ChatMsg?>(null) }
+    var emojiMore by remember { mutableStateOf<ChatMsg?>(null) }
+    var showOptions by remember { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
     val menuStyle = remember { ChatPrefs.menuStyle(ctx) }
     val typingStyle = remember { ChatPrefs.typingStyle(ctx) }
     val clipboard = LocalClipboardManager.current
     val maxDrag = with(LocalDensity.current) { 72.dp.toPx() }
 
     PollingEffect(hash, { if (peerTyping) 1500L else 5000L }) {
-        val r = net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=" + latest)
+        val r = net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=" + latest + "&rev=" + rev)
         if (r.ok) {
             val body = r.body
             val peer = body?.optJSONObject("peer")
@@ -402,6 +459,40 @@ fun ChatScreen(
                 }
             }
             latest = maxOf(latest, body?.optInt("latest", latest) ?: latest)
+            // old messages that were edited, reacted to or deleted, and ones that vanished without a trace
+            val changes = body?.optJSONArray("changes")
+            if (changes != null) {
+                for (i in 0 until changes.length()) {
+                    val c = changes.optJSONObject(i)?.toChatMsg() ?: continue
+                    val idx = messages.indexOfFirst { it.n == c.n }
+                    if (idx >= 0) messages[idx] = c
+                }
+            }
+            val removedArr = body?.optJSONArray("removed")
+            if (removedArr != null) {
+                for (i in 0 until removedArr.length()) {
+                    val rn = removedArr.optInt(i)
+                    messages.removeAll { it.n == rn }
+                }
+            }
+            rev = body?.optInt("rev", rev) ?: rev
+            val pinArr = body?.optJSONArray("pins")
+            if (pinArr != null) {
+                val fresh = ArrayList<PinInfo>()
+                for (i in 0 until pinArr.length()) {
+                    val p = pinArr.optJSONObject(i) ?: continue
+                    val pm = p.optJSONObject("message")?.toChatMsg() ?: continue
+                    fresh.add(PinInfo(p.optInt("n"), p.optLong("until"), p.optBoolean("mine"), pm))
+                }
+                pins.clear()
+                pins.addAll(fresh)
+            }
+            val st = body?.optJSONObject("settings")
+            if (st != null) {
+                deleteMode = st.optString("deleteMode", "announce")
+                val pr = st.optJSONObject("proposal")
+                proposal = if (pr == null) null else pr.optBoolean("mine")
+            }
             canSend = body?.optBoolean("canSend", true) ?: true
             remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
             flow = body?.optJSONObject("flow")?.toFlow()
@@ -431,7 +522,106 @@ fun ChatScreen(
         }
     }
 
+    fun replaceMsg(m: ChatMsg) {
+        val idx = messages.indexOfFirst { it.n == m.n }
+        if (idx >= 0) messages[idx] = m
+    }
+
+    fun react(m: ChatMsg, emoji: String) {
+        scope.launch {
+            val r = net.post("/candy/dm/react", JSONObject().put("hash", bareHash(hash)).put("n", m.n).put("emoji", emoji))
+            if (r.ok) r.body?.optJSONObject("message")?.toChatMsg()?.let { replaceMsg(it) } else error = r.message(ctx)
+        }
+    }
+
+    fun deleteMsg(m: ChatMsg) {
+        scope.launch {
+            val r = net.post("/candy/dm/delete", JSONObject().put("hash", bareHash(hash)).put("n", m.n))
+            if (r.ok) {
+                if (r.body?.optString("mode") == "silent") {
+                    messages.removeAll { it.n == m.n }
+                } else {
+                    replaceMsg(
+                        m.copy(
+                            text = "", deleted = true, loopId = null, stickerId = null, trackId = null,
+                            replyN = 0, myReaction = null, theirReaction = null, edited = false,
+                        ),
+                    )
+                }
+                pins.removeAll { it.n == m.n }
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    fun pinMsg(m: ChatMsg, duration: String) {
+        scope.launch {
+            val r = net.post("/candy/dm/pin", JSONObject().put("hash", bareHash(hash)).put("n", m.n).put("duration", duration))
+            if (r.ok) {
+                val ms = when (duration) {
+                    "1h" -> 3_600_000L
+                    "24h" -> 86_400_000L
+                    "7d" -> 604_800_000L
+                    else -> 2_592_000_000L
+                }
+                pins.removeAll { it.n == m.n }
+                pins.add(PinInfo(m.n, System.currentTimeMillis() + ms, true, m))
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    fun unpinMsg(m: ChatMsg) {
+        scope.launch {
+            val r = net.post("/candy/dm/unpin", JSONObject().put("hash", bareHash(hash)).put("n", m.n))
+            if (r.ok) pins.removeAll { it.n == m.n } else error = r.message(ctx)
+        }
+    }
+
+    fun applySettings(body: JSONObject?) {
+        val st = body?.optJSONObject("settings") ?: return
+        deleteMode = st.optString("deleteMode", "announce")
+        val pr = st.optJSONObject("proposal")
+        proposal = if (pr == null) null else pr.optBoolean("mine")
+    }
+
+    fun changeDeleteMode(mode: String) {
+        scope.launch {
+            val r = net.post("/candy/dm/deletemode", JSONObject().put("hash", bareHash(hash)).put("mode", mode))
+            if (r.ok) applySettings(r.body) else error = r.message(ctx)
+        }
+    }
+
+    fun answerDeleteMode(accept: Boolean) {
+        scope.launch {
+            val r = net.post("/candy/dm/deletemode/answer", JSONObject().put("hash", bareHash(hash)).put("accept", accept))
+            if (r.ok) applySettings(r.body) else error = r.message(ctx)
+        }
+    }
+
     fun send(sticker: String? = null) {
+        // editing a message of mine: the same box, but it changes the old message instead of sending a new one
+        val editTarget = editing
+        if (editTarget != null && sticker == null) {
+            val newText = input.trim()
+            if (newText.isEmpty() || busy) return
+            scope.launch {
+                busy = true
+                val r = net.post("/candy/dm/edit", JSONObject().put("hash", bareHash(hash)).put("n", editTarget.n).put("text", newText))
+                busy = false
+                if (r.ok) {
+                    r.body?.optJSONObject("message")?.toChatMsg()?.let { replaceMsg(it) }
+                    input = ""
+                    editing = null
+                    error = ""
+                } else {
+                    error = r.message(ctx)
+                }
+            }
+            return
+        }
         val text = if (sticker == null) input.trim() else ""
         if ((text.isEmpty() && sticker == null) || busy) return
         scope.launch {
@@ -484,21 +674,47 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize().imePadding()) {
         val sel = selected
         if (sel != null && menuStyle == "bar") {
-            // a message is selected: the bar on top turns into its actions
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                TextButton(onClick = { selected = null }) { Text("✕", style = MaterialTheme.typography.titleLarge) }
-                Text("1", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = { replyTo = sel; selected = null }) { Text("↩", style = MaterialTheme.typography.titleLarge) }
-                TextButton(onClick = { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty()) {
-                    Text("📋", style = MaterialTheme.typography.titleLarge)
+            // a message is selected: the bar on top turns into its actions, with the reactions under it
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = { selected = null }) { Text("✕", style = MaterialTheme.typography.titleLarge) }
+                    Text("1", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    if (!sel.deleted) {
+                        TextButton(onClick = { replyTo = sel; selected = null }) { Text("↩", style = MaterialTheme.typography.titleLarge) }
+                        TextButton(onClick = { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty()) {
+                            Text("📋", style = MaterialTheme.typography.titleLarge)
+                        }
+                        TextButton(onClick = { forwarding = sel; selected = null }) { Text("↪", style = MaterialTheme.typography.titleLarge) }
+                        Box {
+                            TextButton(onClick = { moreMenu = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                            DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                if (sel.text.isNotEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.msg_action_select_text)) },
+                                        onClick = { moreMenu = false; textSelectN = sel.n; selected = null },
+                                    )
+                                }
+                                ExtraMenuItems(
+                                    m = sel,
+                                    pinned = pins.any { it.n == sel.n },
+                                    onEdit = { moreMenu = false; editing = sel; input = sel.text; replyTo = null; selected = null },
+                                    onPin = { moreMenu = false; pinning = sel; selected = null },
+                                    onUnpin = { moreMenu = false; unpinMsg(sel); selected = null },
+                                    onDelete = { moreMenu = false; deleting = sel; selected = null },
+                                )
+                            }
+                        }
+                    }
                 }
-                TextButton(onClick = { forwarding = sel; selected = null }) { Text("↪", style = MaterialTheme.typography.titleLarge) }
-                TextButton(onClick = { textSelectN = sel.n; selected = null }, enabled = sel.text.isNotEmpty()) {
-                    Text("Aa", style = MaterialTheme.typography.titleMedium)
+                if (!sel.deleted) {
+                    ReactionRow(
+                        onPick = { e -> react(sel, e); selected = null },
+                        onMore = { emojiMore = sel; selected = null },
+                    )
                 }
             }
         } else {
@@ -520,6 +736,53 @@ fun ChatScreen(
                             Text(stringResource(R.string.chat_typing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
+                }
+                TextButton(onClick = { showOptions = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+            }
+        }
+
+        // the other person asked for silent deleting
+        if (proposal == false) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.msg_delete_proposal_theirs, shownName), style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { answerDeleteMode(true) }) { Text(stringResource(R.string.msg_accept)) }
+                        TextButton(onClick = { answerDeleteMode(false) }) { Text(stringResource(R.string.msg_decline)) }
+                    }
+                }
+            }
+        }
+
+        // pinned messages: tap to jump to the next one
+        if (pins.isNotEmpty()) {
+            val pin = pins[pinIdx % pins.size]
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clickable {
+                        val idx = messages.indexOfFirst { it.n == pin.n }
+                        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
+                        pinIdx = (pinIdx + 1) % pins.size
+                    },
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("📌")
+                    Text(
+                        msgPreview(pin.msg),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (pins.size > 1) Muted((pinIdx % pins.size + 1).toString() + "/" + pins.size)
                 }
             }
         }
@@ -614,6 +877,16 @@ fun ChatScreen(
                         verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = if (m.mine) Arrangement.End else Arrangement.Start,
                     ) {
+                      Column(horizontalAlignment = if (m.mine) Alignment.End else Alignment.Start) {
+                        if (m.deleted) {
+                            Text(
+                                if (m.mine) stringResource(R.string.msg_deleted_mine) else stringResource(R.string.msg_deleted_theirs, shownName),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontStyle = FontStyle.Italic,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            )
+                        } else {
                         val stickerId = m.stickerId
                         val quoteWho = if (m.replyMine) stringResource(R.string.nav_me) else shownName
                         if (stickerId != null) {
@@ -686,10 +959,20 @@ fun ChatScreen(
                                         Text(m.text, color = textColor)
                                     }
                                 }
+                                if (m.edited) {
+                                    Text(stringResource(R.string.msg_edited), color = textColor.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
+                        ReactionChips(m) { react(m, m.myReaction.orEmpty()) }
+                        }
+                      }
                     }
-                    DropdownMenu(expanded = isSel && menuStyle == "popup", onDismissRequest = { selected = null }) {
+                    DropdownMenu(expanded = isSel && menuStyle == "popup" && !m.deleted, onDismissRequest = { selected = null }) {
+                        ReactionRow(
+                            onPick = { e -> react(m, e); selected = null },
+                            onMore = { emojiMore = m; selected = null },
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.msg_action_reply)) },
                             onClick = { replyTo = m; selected = null },
@@ -707,6 +990,14 @@ fun ChatScreen(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.msg_action_forward)) },
                             onClick = { forwarding = m; selected = null },
+                        )
+                        ExtraMenuItems(
+                            m = m,
+                            pinned = pins.any { it.n == m.n },
+                            onEdit = { editing = m; input = m.text; replyTo = null; selected = null },
+                            onPin = { pinning = m; selected = null },
+                            onUnpin = { unpinMsg(m); selected = null },
+                            onDelete = { deleting = m; selected = null },
                         )
                     }
                 }
@@ -742,6 +1033,17 @@ fun ChatScreen(
                 ) { Text(stringResource(R.string.prof_follow)) }
             } else {
                 if (left != null) Muted(stringResource(R.string.chat_remaining, left))
+                val ed = editing
+                if (ed != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Muted("✏️ " + stringResource(R.string.msg_editing) + ": " + ed.text.take(40), Modifier.weight(1f))
+                        TextButton(onClick = { editing = null; input = "" }) { Text("✕") }
+                    }
+                }
                 if (quoted != null) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -813,6 +1115,51 @@ fun ChatScreen(
     val fwd = forwarding
     if (fwd != null) ForwardDialog(net, fwd) { forwarding = null }
 
+    val pinTarget = pinning
+    if (pinTarget != null) {
+        AlertDialog(
+            onDismissRequest = { pinning = null },
+            title = { Text(stringResource(R.string.msg_pin_title)) },
+            text = {
+                Column {
+                    for ((key, label) in listOf("1h" to R.string.msg_pin_1h, "24h" to R.string.msg_pin_24h, "7d" to R.string.msg_pin_7d, "30d" to R.string.msg_pin_30d)) {
+                        TextButton(onClick = { pinMsg(pinTarget, key); pinning = null }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(label))
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pinning = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    val delTarget = deleting
+    if (delTarget != null) {
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            text = { Text(stringResource(R.string.msg_delete_confirm)) },
+            confirmButton = { TextButton(onClick = { deleteMsg(delTarget); deleting = null }) { Text(stringResource(R.string.msg_action_delete)) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    val emojiTarget = emojiMore
+    if (emojiTarget != null) {
+        EmojiPickerDialog(onPick = { e -> react(emojiTarget, e); emojiMore = null }, onDismiss = { emojiMore = null })
+    }
+
+    if (showOptions) {
+        ChatOptionsDialog(
+            name = shownName,
+            deleteMode = deleteMode,
+            proposal = proposal,
+            onMode = { changeDeleteMode(it) },
+            onAnswer = { answerDeleteMode(it) },
+            onDismiss = { showOptions = false },
+        )
+    }
+
     val sm = stickerMsg
     val smSticker = sm?.stickerId
     if (sm != null && smSticker != null) {
@@ -826,6 +1173,7 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 StickerImage(smSticker, net.token, 240.dp)
+                StickerSheetActions(net, smSticker)
                 TextButton(onClick = { replyTo = sm; stickerMsg = null }, modifier = Modifier.fillMaxWidth()) {
                     Text("↩  " + stringResource(R.string.msg_action_reply))
                 }
@@ -921,5 +1269,127 @@ private fun ForwardDialog(net: Net, m: ChatMsg, onDismiss: () -> Unit) {
             TextButton(onClick = { sendTo(typed) }, enabled = !busy && typed.isNotBlank()) { Text(stringResource(R.string.post_send)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+/** The quick reactions in one row, with a plus for the rest. */
+@Composable
+private fun ReactionRow(onPick: (String) -> Unit, onMore: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            for (e in QUICK_REACTIONS) {
+                Text(e, fontSize = 26.sp, modifier = Modifier.clip(CircleShape).clickable { onPick(e) }.padding(6.dp))
+            }
+            Text("＋", fontSize = 24.sp, modifier = Modifier.clip(CircleShape).clickable(onClick = onMore).padding(horizontal = 10.dp, vertical = 6.dp))
+        }
+    }
+}
+
+/** The reactions under a message. Tapping yours takes it back. */
+@Composable
+private fun ReactionChips(m: ChatMsg, onToggleMine: () -> Unit) {
+    val theirs = m.theirReaction
+    val mine = m.myReaction
+    if (theirs == null && mine == null) return
+    Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (theirs != null) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Text(theirs, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+            }
+        }
+        if (mine != null) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.clickable(onClick = onToggleMine),
+            ) {
+                Text(mine, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+            }
+        }
+    }
+}
+
+/** Edit, pin and delete: the actions that depend on whose message it is. */
+@Composable
+private fun ExtraMenuItems(
+    m: ChatMsg,
+    pinned: Boolean,
+    onEdit: () -> Unit,
+    onPin: () -> Unit,
+    onUnpin: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    if (canEdit(m)) {
+        DropdownMenuItem(text = { Text("✏️  " + stringResource(R.string.msg_action_edit)) }, onClick = onEdit)
+    }
+    if (pinned) {
+        DropdownMenuItem(text = { Text("📌  " + stringResource(R.string.msg_action_unpin)) }, onClick = onUnpin)
+    } else {
+        DropdownMenuItem(text = { Text("📌  " + stringResource(R.string.msg_action_pin)) }, onClick = onPin)
+    }
+    if (m.mine) {
+        DropdownMenuItem(text = { Text("🗑  " + stringResource(R.string.msg_action_delete)) }, onClick = onDelete)
+    }
+}
+
+@Composable
+private fun EmojiPickerDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.msg_react_more)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (row in MORE_REACTIONS.chunked(6)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        for (e in row) {
+                            Text(e, fontSize = 28.sp, modifier = Modifier.clip(CircleShape).clickable { onPick(e) }.padding(6.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+/** The options of one chat. For now: how deleting messages works between the two of you. */
+@Composable
+private fun ChatOptionsDialog(
+    name: String,
+    deleteMode: String,
+    proposal: Boolean?,
+    onMode: (String) -> Unit,
+    onAnswer: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chat_options_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SectionTitle(stringResource(R.string.msg_delete_mode))
+                ChoiceRow(deleteMode == "announce", stringResource(R.string.msg_delete_announce)) { onMode("announce") }
+                ChoiceRow(deleteMode == "silent", stringResource(R.string.msg_delete_silent)) { onMode("silent") }
+                if (proposal == true) {
+                    Muted(stringResource(R.string.msg_delete_proposal_mine, name))
+                    TextButton(onClick = { onAnswer(false) }) { Text(stringResource(R.string.msg_cancel_request)) }
+                } else if (proposal == false) {
+                    Text(stringResource(R.string.msg_delete_proposal_theirs, name), style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onAnswer(true) }) { Text(stringResource(R.string.msg_accept)) }
+                        TextButton(onClick = { onAnswer(false) }) { Text(stringResource(R.string.msg_decline)) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
     )
 }

@@ -1,5 +1,8 @@
 package com.candy
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -75,6 +78,49 @@ object StickerCache {
     fun clear() = mem.evictAll()
 }
 
+/** A pack of stickers you made, and what the sticker lists from the server look like. */
+class StickerPack(val id: String, val name: String, val ids: List<String>)
+
+class StickerLists(val ids: List<String>, val favs: Set<String>, val packs: List<StickerPack>)
+
+fun JSONObject.toStickerLists(): StickerLists {
+    val ids = ArrayList<String>()
+    val favs = HashSet<String>()
+    val arr = optJSONArray("stickers")
+    if (arr != null) {
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val id = o.optString("id")
+            if (id.isEmpty()) continue
+            ids.add(id)
+            if (o.optBoolean("fav")) favs.add(id)
+        }
+    }
+    val packs = ArrayList<StickerPack>()
+    val pArr = optJSONArray("packs")
+    if (pArr != null) {
+        for (i in 0 until pArr.length()) {
+            val o = pArr.optJSONObject(i) ?: continue
+            val pIds = ArrayList<String>()
+            val a = o.optJSONArray("ids")
+            if (a != null) for (j in 0 until a.length()) pIds.add(a.optString(j))
+            packs.add(StickerPack(o.optString("id"), o.optString("name"), pIds))
+        }
+    }
+    return StickerLists(ids, favs, packs)
+}
+
+@Composable
+private fun StickerTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(label, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+    }
+}
+
 /** A sticker, with no frame around it. */
 @Composable
 fun StickerImage(id: String, token: String, size: Dp, modifier: Modifier = Modifier) {
@@ -97,6 +143,9 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var ids by remember { mutableStateOf<List<String>>(emptyList()) }
+    var favs by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var packs by remember { mutableStateOf<List<StickerPack>>(emptyList()) }
+    var tab by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var deleteMode by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -108,10 +157,12 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
         val r = net.get("/candy/stickers")
         loading = false
         if (r.ok) {
-            val arr = r.body?.optJSONArray("stickers")
-            val out = ArrayList<String>()
-            if (arr != null) for (i in 0 until arr.length()) arr.optJSONObject(i)?.optString("id")?.let { out.add(it) }
-            ids = out
+            val lists = r.body?.toStickerLists()
+            if (lists != null) {
+                ids = lists.ids
+                favs = lists.favs
+                packs = lists.packs
+            }
         } else {
             error = r.message(ctx)
         }
@@ -153,8 +204,33 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.chat_stickers)) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!loading && ids.isEmpty()) Muted(stringResource(R.string.stk_empty))
-                for (row in ids.chunked(4)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StickerTab("⭐", tab == "fav") { tab = "fav" }
+                    StickerTab(stringResource(R.string.stk_tab_all), tab == "all") { tab = "all" }
+                    for (p in packs) StickerTab(p.name, tab == p.id) { tab = p.id }
+                }
+                val shown = when (tab) {
+                    "all" -> ids
+                    "fav" -> ids.filter { it in favs }
+                    else -> packs.firstOrNull { it.id == tab }?.ids ?: ids
+                }
+                if (!loading && shown.isEmpty()) Muted(stringResource(R.string.stk_empty))
+                if (tab != "all" && tab != "fav") {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val r = net.post("/candy/sticker/pack/delete", JSONObject().put("pack", tab))
+                                if (r.ok) {
+                                    tab = "all"
+                                    reload++
+                                } else {
+                                    error = r.message(ctx)
+                                }
+                            }
+                        },
+                    ) { Text(stringResource(R.string.stk_delete_pack)) }
+                }
+                for (row in shown.chunked(4)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (id in row) {
                             Box(
@@ -164,9 +240,13 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
                                     .clickable {
                                         if (deleteMode) {
                                             scope.launch {
-                                                val r = net.post("/candy/sticker/delete", JSONObject().put("id", id))
+                                                val r = when {
+                                                    tab == "fav" -> net.post("/candy/sticker/fav", JSONObject().put("id", id).put("on", false))
+                                                    tab != "all" -> net.post("/candy/sticker/pack/remove", JSONObject().put("pack", tab).put("id", id))
+                                                    else -> net.post("/candy/sticker/delete", JSONObject().put("id", id))
+                                                }
                                                 if (r.ok) {
-                                                    StickerCache.forget(id)
+                                                    if (tab == "all") StickerCache.forget(id)
                                                     reload++
                                                 } else {
                                                     error = r.message(ctx)
@@ -202,4 +282,117 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
     )
+}
+
+/** Under a sticker you opened in a chat: save it, make it a favourite, or put it in one of your packs. */
+@Composable
+fun StickerSheetActions(net: Net, id: String) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var lists by remember { mutableStateOf<StickerLists?>(null) }
+    var reload by remember { mutableStateOf(0) }
+    var notice by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    var choosingPack by remember { mutableStateOf(false) }
+
+    LaunchedEffect(id, reload) {
+        val r = net.get("/candy/stickers")
+        if (r.ok) lists = r.body?.toStickerLists()
+    }
+
+    val l = lists
+    val mine = l != null && id in l.ids
+    val fav = l != null && id in l.favs
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (l != null && !mine) {
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        val r = net.post("/candy/sticker/save", JSONObject().put("id", id))
+                        if (r.ok) {
+                            notice = ctx.getString(R.string.stk_saved)
+                            error = ""
+                            reload++
+                        } else {
+                            error = r.message(ctx)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("➕  " + stringResource(R.string.stk_save)) }
+        }
+        TextButton(
+            onClick = {
+                scope.launch {
+                    val r = net.post("/candy/sticker/fav", JSONObject().put("id", id).put("on", !fav))
+                    if (r.ok) {
+                        error = ""
+                        reload++
+                    } else {
+                        error = r.message(ctx)
+                    }
+                }
+            },
+            enabled = l != null,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("⭐  " + stringResource(if (fav) R.string.stk_fav_remove else R.string.stk_fav_add)) }
+        TextButton(onClick = { choosingPack = true }, enabled = l != null, modifier = Modifier.fillMaxWidth()) {
+            Text("📁  " + stringResource(R.string.stk_to_pack))
+        }
+        if (notice.isNotEmpty()) Text(notice, color = MaterialTheme.colorScheme.primary)
+        ErrorText(error)
+    }
+
+    if (choosingPack && l != null) {
+        var newName by remember { mutableStateOf("") }
+        var busy by remember { mutableStateOf(false) }
+
+        fun addTo(packId: String) {
+            scope.launch {
+                busy = true
+                val r = net.post("/candy/sticker/pack/add", JSONObject().put("pack", packId).put("id", id))
+                busy = false
+                if (r.ok) {
+                    notice = ctx.getString(R.string.stk_saved)
+                    error = ""
+                    choosingPack = false
+                    reload++
+                } else {
+                    error = r.message(ctx)
+                    choosingPack = false
+                }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { choosingPack = false },
+            title = { Text(stringResource(R.string.stk_pack_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (p in l.packs) {
+                        TextButton(onClick = { addTo(p.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                            Text(p.name + "  (" + p.ids.size + ")")
+                        }
+                    }
+                    Field(stringResource(R.string.stk_new_pack), newName, { newName = it.take(20) })
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                val made = net.post("/candy/sticker/pack", JSONObject().put("name", newName.trim()))
+                                val newId = made.body?.optJSONObject("pack")?.optString("id").orEmpty()
+                                busy = false
+                                if (made.ok && newId.isNotEmpty()) addTo(newId) else error = made.message(ctx)
+                            }
+                        },
+                        enabled = !busy && newName.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.stk_create_pack)) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choosingPack = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 }
