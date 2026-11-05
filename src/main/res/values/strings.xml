@@ -230,4 +230,17 @@
     <string name="post_add_photo">Add another photo</string>
     <string name="post_photos_count">%1$d / %2$d photos</string>
     <string name="post_images_partial">Track posted, but %1$d photo(s) did not upload</string>
+    <string name="msg_settings_title">Message settings</string>
+    <string name="msg_menu_style">When you press and hold a message</string>
+    <string name="msg_menu_bar">Select it, with actions in the top bar</string>
+    <string name="msg_menu_popup">A small menu next to it</string>
+    <string name="msg_typing_style">When someone is typing</string>
+    <string name="msg_typing_text">Words under their name</string>
+    <string name="msg_typing_bubble">Three dots at the end of the chat</string>
+    <string name="msg_action_reply">Reply</string>
+    <string name="msg_action_copy">Copy</string>
+    <string name="msg_action_forward">Forward</string>
+    <string name="msg_action_select_text">Select text</string>
+    <string name="msg_copied">Copied</string>
+    <string name="msg_forward_title">Forward to</string>
 </resources>

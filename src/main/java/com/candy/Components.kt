@@ -1,6 +1,11 @@
 package com.candy
 
 import android.content.Context
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -166,14 +171,18 @@ fun taggedText(text: String, color: Color): AnnotatedString = buildAnnotatedStri
     append(text.substring(last))
 }
 
-/** The blue check next to a verified account. */
+/** The blue check next to a verified account (drawn, so it sits in the middle of the circle). */
 @Composable
 fun VerifiedBadge(size: Dp = 16.dp) {
-    Box(
-        Modifier.size(size).clip(CircleShape).background(Color(0xFF1D9BF0)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("✓", color = Color.White, fontSize = (size.value * 0.68f).sp, fontWeight = FontWeight.Bold)
+    Canvas(Modifier.size(size).clip(CircleShape).background(Color(0xFF1D9BF0))) {
+        val w = this.size.width
+        val h = this.size.height
+        val check = Path().apply {
+            moveTo(w * 0.27f, h * 0.52f)
+            lineTo(w * 0.44f, h * 0.68f)
+            lineTo(w * 0.74f, h * 0.34f)
+        }
+        drawPath(check, Color.White, style = Stroke(width = w * 0.12f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 

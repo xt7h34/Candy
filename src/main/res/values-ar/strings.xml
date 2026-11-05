@@ -230,4 +230,17 @@
     <string name="post_add_photo">أضف صورة تانية</string>
     <string name="post_photos_count">%1$d / %2$d صور</string>
     <string name="post_images_partial">التراك اتنشر، بس %1$d صورة معرفتش تترفع</string>
+    <string name="msg_settings_title">إعدادات الرسايل</string>
+    <string name="msg_menu_style">لما تضغط مطولًا على رسالة</string>
+    <string name="msg_menu_bar">تتحدد وتظهر الأوامر في الشريط اللي فوق</string>
+    <string name="msg_menu_popup">قائمة صغيرة جنبها</string>
+    <string name="msg_typing_style">لما حد يكتب</string>
+    <string name="msg_typing_text">كلمات تحت اسمه</string>
+    <string name="msg_typing_bubble">تلات نقط في آخر الشات</string>
+    <string name="msg_action_reply">رد</string>
+    <string name="msg_action_copy">نسخ</string>
+    <string name="msg_action_forward">تحويل</string>
+    <string name="msg_action_select_text">تحديد النص</string>
+    <string name="msg_copied">اتنسخ</string>
+    <string name="msg_forward_title">حوّل لـ</string>
 </resources>

@@ -407,6 +407,7 @@ fun MeScreen(
     var error by remember { mutableStateOf("") }
     var editingVibe by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(false) }
+    var msgSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(reload, refreshKey) {
         val r = net.get("/candy/me")
@@ -491,6 +492,11 @@ fun MeScreen(
                         },
                     )
                 }
+
+                OutlinedButton(onClick = { msgSettings = true }, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.msg_settings_title))
+                }
+                if (msgSettings) MessageSettingsDialog { msgSettings = false }
 
                 val loc = data.optJSONObject("location")
                 if (loc != null) {
