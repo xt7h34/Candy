@@ -314,4 +314,27 @@
     <string name="cs_nick_label">Nickname</string>
     <string name="cs_nick_hint">Only you see it</string>
     <string name="msg_seen_share">Let people see when I have read their messages</string>
+    <string name="dur_days">%1$d days</string>
+    <string name="dur_hours">%1$d hours</string>
+    <string name="dur_minutes">%1$d min</string>
+    <string name="cs_disappear_when">Messages disappear</string>
+    <string name="cs_after_sent">After sending</string>
+    <string name="cs_after_read">After being read</string>
+    <string name="cs_disappear_after">Time</string>
+    <string name="cs_custom">Custom</string>
+    <string name="cs_custom_range">From 1 minute to 30 days</string>
+    <string name="cs_unit_min">min</string>
+    <string name="cs_unit_hour">hours</string>
+    <string name="cs_unit_day">days</string>
+    <string name="cs_turn_off">Turn off</string>
+    <string name="msg_sys_disappear_on_sent">%1$s set messages to disappear %2$s after they are sent</string>
+    <string name="msg_sys_disappear_on_read">%1$s set messages to disappear %2$s after they are read</string>
+    <string name="chat_search_hint">Search in this chat</string>
+    <string name="chat_search_none">No matches</string>
+    <string name="chat_back_latest">Back to the latest messages</string>
+    <string name="chat_kind_voice">Voice message</string>
+    <string name="voice_record_failed">Could not start recording</string>
+    <string name="voice_no_permission">Allow the microphone to record voice messages</string>
+    <string name="voice_too_short">The recording is too short</string>
+    <string name="voice_limit">You reached the 5 minute limit</string>
 </resources>

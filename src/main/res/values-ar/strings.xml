@@ -314,4 +314,27 @@
     <string name="cs_nick_label">اسم مستعار</string>
     <string name="cs_nick_hint">إنت بس اللي بتشوفه</string>
     <string name="msg_seen_share">خلي الناس تشوف إني قريت رسايلهم</string>
+    <string name="dur_days">%1$d يوم</string>
+    <string name="dur_hours">%1$d ساعة</string>
+    <string name="dur_minutes">%1$d دقيقة</string>
+    <string name="cs_disappear_when">الرسايل تختفي</string>
+    <string name="cs_after_sent">بعد الإرسال</string>
+    <string name="cs_after_read">بعد القراءة</string>
+    <string name="cs_disappear_after">المدة</string>
+    <string name="cs_custom">مخصص</string>
+    <string name="cs_custom_range">من دقيقة لحد 30 يوم</string>
+    <string name="cs_unit_min">دقيقة</string>
+    <string name="cs_unit_hour">ساعة</string>
+    <string name="cs_unit_day">يوم</string>
+    <string name="cs_turn_off">قفّل</string>
+    <string name="msg_sys_disappear_on_sent">%1$s خلّى الرسايل تختفي بعد %2$s من إرسالها</string>
+    <string name="msg_sys_disappear_on_read">%1$s خلّى الرسايل تختفي بعد %2$s من قراءتها</string>
+    <string name="chat_search_hint">ابحث في المحادثة</string>
+    <string name="chat_search_none">مفيش نتايج</string>
+    <string name="chat_back_latest">رجوع لآخر الرسايل</string>
+    <string name="chat_kind_voice">رسالة صوتية</string>
+    <string name="voice_record_failed">معرفتش أبدأ التسجيل</string>
+    <string name="voice_no_permission">اسمح بالميكروفون عشان تسجل فويس</string>
+    <string name="voice_too_short">التسجيل قصير أوي</string>
+    <string name="voice_limit">وصلت للحد الأقصى 5 دقايق</string>
 </resources>

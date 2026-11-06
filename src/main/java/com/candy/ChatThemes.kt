@@ -1,6 +1,8 @@
 package com.candy
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 
 /**
  * The look of one chat: the colour of your bubbles, and a tint that fades from the top.
@@ -21,11 +23,14 @@ val ChatThemes = listOf(
 
 fun chatThemeOf(id: String): ChatTheme = ChatThemes.firstOrNull { it.id == id } ?: ChatThemes[0]
 
-val DisappearOptions = listOf(0L, 3_600_000L, 86_400_000L, 604_800_000L)
+/** The quick choices for disappearing messages. Anything from 1 minute to 30 days can be typed in too. */
+val DisappearPresets = listOf(60_000L, 300_000L, 3_600_000L, 86_400_000L, 604_800_000L)
 
-fun disappearLabel(ms: Long): Int = when {
-    ms <= 0L -> R.string.cs_off
-    ms <= 3_600_000L -> R.string.dur_1h
-    ms <= 86_400_000L -> R.string.dur_24h
-    else -> R.string.dur_7d
+/** "5 min", "2 hours", "3 days", or "Off". */
+@Composable
+fun durationText(ms: Long): String = when {
+    ms <= 0L -> stringResource(R.string.cs_off)
+    ms % 86_400_000L == 0L -> stringResource(R.string.dur_days, (ms / 86_400_000L).toInt())
+    ms % 3_600_000L == 0L -> stringResource(R.string.dur_hours, (ms / 3_600_000L).toInt())
+    else -> stringResource(R.string.dur_minutes, (ms / 60_000L).toInt())
 }

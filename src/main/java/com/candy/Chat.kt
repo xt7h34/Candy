@@ -1,5 +1,15 @@
 package com.candy
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.DisposableEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontStyle
@@ -121,12 +131,16 @@ private data class ChatMsg(
     val hidden: Boolean,
     val sys: String?,
     val sysValue: String,
+    val voiceMs: Long?,
 )
 
 /** A pinned message: which one, until when, and whether I pinned it. */
 private class PinInfo(val n: Int, val until: Long, val mine: Boolean, val msg: ChatMsg)
 
 private const val EDIT_WINDOW_MS = 15 * 60 * 1000L
+
+/** One result of searching inside a chat. */
+private class SearchHit(val n: Int, val mine: Boolean, val text: String, val at: Long)
 private val QUICK_REACTIONS = listOf("❤️", "😂", "😮", "😢", "👍", "🔥")
 private val MORE_REACTIONS = listOf(
     "❤️", "😂", "😮", "😢", "👍", "🔥", "😍", "🥰", "😘", "😎", "🤔", "😅",
@@ -136,6 +150,7 @@ private val MORE_REACTIONS = listOf(
 
 private fun msgPreview(m: ChatMsg): String = when {
     m.stickerId != null -> "😊"
+    m.voiceMs != null -> "🎤"
     m.text.isNotEmpty() -> m.text
     m.trackId != null -> "🖼️"
     m.loopId != null -> "🎬"
@@ -181,6 +196,7 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         hidden = optBoolean("hidden"),
         sys = nullableString("sys"),
         sysValue = optString("value"),
+        voiceMs = optJSONObject("voice")?.optLong("ms"),
     )
 }
 
@@ -367,6 +383,7 @@ fun ChatsScreen(
                                 t.lastDeleted -> stringResource(R.string.chat_last_deleted)
                                 t.lastKind == "sys" -> "⚙️"
                                 t.lastText.isNotEmpty() -> t.lastText
+                                t.lastKind == "voice" -> "🎤"
                                 t.lastKind == "sticker" -> "😊"
                                 t.lastKind == "track" -> "🖼️"
                                 else -> "🎬"
@@ -396,6 +413,7 @@ private fun QuoteBlock(m: ChatMsg, who: String, textColor: Color) {
         "sticker" -> "😊 " + stringResource(R.string.chat_kind_sticker)
         "loop" -> "🎬 " + stringResource(R.string.chat_kind_loop)
         "track" -> "🖼️ " + stringResource(R.string.chat_kind_track)
+        "voice" -> "🎤 " + stringResource(R.string.chat_kind_voice)
         else -> m.replyText
     }
     Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x22000000)).padding(6.dp)) {
@@ -456,6 +474,18 @@ fun ChatScreen(
     var seenUpTo by remember { mutableStateOf<Int?>(null) }
     var themeId by remember { mutableStateOf("default") }
     var nickname by remember { mutableStateOf("") }
+    var disappearMs by remember { mutableStateOf(0L) }
+    var searching by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val hits = remember { mutableStateListOf<SearchHit>() }
+    var jumped by remember { mutableStateOf(false) }
+    var highlightN by remember { mutableStateOf(-1) }
+    val recorder = remember { VoiceRecorder(ctx) }
+    var recording by remember { mutableStateOf(false) }
+    var recPaused by remember { mutableStateOf(false) }
+    var limitReached by remember { mutableStateOf(false) }
+    var recElapsed by remember { mutableStateOf(0L) }
+    val amps = remember { mutableStateListOf<Float>() }
     var moreMenu by remember { mutableStateOf(false) }
     val menuStyle = remember { ChatPrefs.menuStyle(ctx) }
     val typingStyle = remember { ChatPrefs.typingStyle(ctx) }
@@ -473,7 +503,7 @@ fun ChatScreen(
             if (arr != null) {
                 for (i in 0 until arr.length()) {
                     val m = arr.optJSONObject(i)?.toChatMsg() ?: continue
-                    if (!m.hidden && messages.none { it.n == m.n }) messages.add(m)
+                    if (!jumped && !m.hidden && messages.none { it.n == m.n }) messages.add(m)
                 }
             }
             latest = maxOf(latest, body?.optInt("latest", latest) ?: latest)
@@ -514,6 +544,7 @@ fun ChatScreen(
                 proposal = if (pr == null) null else pr.optBoolean("mine")
                 themeId = st.optString("theme", "default")
                 nickname = st.optString("nick")
+                disappearMs = st.optLong("disappear", 0L)
             }
             canSend = body?.optBoolean("canSend", true) ?: true
             remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
@@ -527,7 +558,7 @@ fun ChatScreen(
     }
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+        if (!jumped && messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
     // the three-dots bubble is one more row at the end of the list
     LaunchedEffect(peerTyping) {
@@ -542,6 +573,167 @@ fun ChatScreen(
                 lastTypingSent = now
                 net.post("/candy/dm/typing", JSONObject().put("hash", bareHash(hash)))
             }
+        }
+    }
+
+    // ───── search inside the chat, and jumping to an old message ─────
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isBlank()) {
+            hits.clear()
+            return@LaunchedEffect
+        }
+        delay(350)
+        val r = net.get("/candy/dm/search?hash=" + Uri.encode(bareHash(hash)) + "&q=" + Uri.encode(searchQuery.trim()))
+        if (r.ok) {
+            val arr = r.body?.optJSONArray("hits")
+            val fresh = ArrayList<SearchHit>()
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    fresh.add(SearchHit(o.optInt("n"), o.optBoolean("mine"), o.optString("text"), o.optLong("at")))
+                }
+            }
+            hits.clear()
+            hits.addAll(fresh)
+        }
+    }
+
+    fun jumpTo(n: Int) {
+        if (messages.any { it.n == n }) {
+            searching = false
+            searchQuery = ""
+            hits.clear()
+            highlightN = n
+            return
+        }
+        scope.launch {
+            val r = net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&around=" + n)
+            if (!r.ok) {
+                error = r.message(ctx)
+                return@launch
+            }
+            val arr = r.body?.optJSONArray("messages") ?: return@launch
+            val fresh = ArrayList<ChatMsg>()
+            for (i in 0 until arr.length()) {
+                val m = arr.optJSONObject(i)?.toChatMsg() ?: continue
+                if (!m.hidden) fresh.add(m)
+            }
+            jumped = true
+            messages.clear()
+            messages.addAll(fresh)
+            searching = false
+            searchQuery = ""
+            hits.clear()
+            highlightN = n
+        }
+    }
+
+    LaunchedEffect(highlightN, messages.size) {
+        if (highlightN > 0) {
+            val idx = messages.indexOfFirst { it.n == highlightN }
+            if (idx >= 0) {
+                listState.scrollToItem(idx)
+                delay(2200)
+                highlightN = -1
+            }
+        }
+    }
+
+    // ───── voice messages ─────
+    fun startRecording() {
+        if (recorder.start()) {
+            recording = true
+            recPaused = false
+            limitReached = false
+            recElapsed = 0L
+            amps.clear()
+            error = ""
+        } else {
+            error = ctx.getString(R.string.voice_record_failed)
+        }
+    }
+
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startRecording() else error = ctx.getString(R.string.voice_no_permission)
+    }
+
+    fun onMicClick() {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startRecording()
+        } else {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun discardVoice() {
+        recorder.cancel()
+        recording = false
+        recPaused = false
+        limitReached = false
+        amps.clear()
+    }
+
+    fun sendVoice() {
+        val done = recorder.finish()
+        recording = false
+        recPaused = false
+        limitReached = false
+        amps.clear()
+        if (done == null || done.second < 1000L) {
+            done?.first?.delete()
+            error = ctx.getString(R.string.voice_too_short)
+            return
+        }
+        val quotedMsg = replyTo
+        scope.launch {
+            busy = true
+            error = ""
+            val bytes = withContext(Dispatchers.IO) { done.first.readBytes() }
+            val up = net.post("/candy/dm/voice/upload", JSONObject().put("audio", Base64.encodeToString(bytes, Base64.NO_WRAP)))
+            val voiceId = up.body?.optString("id").orEmpty()
+            if (!up.ok || voiceId.isEmpty()) {
+                busy = false
+                error = up.message(ctx)
+                done.first.delete()
+                return@launch
+            }
+            val body = JSONObject().put("hash", bareHash(hash)).put("voice", JSONObject().put("id", voiceId).put("ms", done.second))
+            if (quotedMsg != null) body.put("reply", quotedMsg.n)
+            val r = net.post("/candy/dm/send", body)
+            busy = false
+            done.first.delete()
+            if (r.ok) {
+                r.body?.optJSONObject("message")?.toChatMsg()?.let { m ->
+                    if (messages.none { it.n == m.n }) messages.add(m)
+                    latest = maxOf(latest, m.n)
+                }
+                replyTo = null
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    LaunchedEffect(recording, recPaused) {
+        while (recording) {
+            recElapsed = recorder.elapsedMs
+            if (!recPaused) {
+                amps.add((recorder.amplitude / 32767f).coerceIn(0f, 1f))
+                if (amps.size > 40) amps.removeAt(0)
+                if (recElapsed >= VOICE_MAX_MS) {
+                    recorder.pause()
+                    recPaused = true
+                    limitReached = true
+                }
+            }
+            delay(100)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.cancel()
+            VoicePlayer.stop()
         }
     }
 
@@ -567,7 +759,7 @@ fun ChatScreen(
                     replaceMsg(
                         m.copy(
                             text = "", deleted = true, loopId = null, stickerId = null, trackId = null,
-                            replyN = 0, myReaction = null, theirReaction = null, edited = false,
+                            replyN = 0, myReaction = null, theirReaction = null, edited = false, voiceMs = null,
                         ),
                     )
                 }
@@ -708,7 +900,18 @@ fun ChatScreen(
             .imePadding(),
     ) {
         val sel = selected
-        if (sel != null && menuStyle == "bar") {
+        if (searching) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(onClick = { searching = false; searchQuery = ""; hits.clear() }) {
+                    Text("✕", style = MaterialTheme.typography.titleLarge)
+                }
+                Field(stringResource(R.string.chat_search_hint), searchQuery, { searchQuery = it.take(40) }, modifier = Modifier.weight(1f))
+            }
+        } else if (sel != null && menuStyle == "bar") {
             // a message is selected: the bar on top turns into its actions, with the reactions under it
             Column(Modifier.fillMaxWidth()) {
                 Row(
@@ -723,7 +926,9 @@ fun ChatScreen(
                         TextButton(onClick = { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty()) {
                             Text("📋", style = MaterialTheme.typography.titleLarge)
                         }
-                        TextButton(onClick = { forwarding = sel; selected = null }) { Text("↪", style = MaterialTheme.typography.titleLarge) }
+                        TextButton(onClick = { forwarding = sel; selected = null }, enabled = sel.voiceMs == null) {
+                            Text("↪", style = MaterialTheme.typography.titleLarge)
+                        }
                         TextButton(onClick = { deleting = sel; selected = null }) { Text("🗑", style = MaterialTheme.typography.titleLarge) }
                         Box {
                             TextButton(onClick = { moreMenu = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
@@ -772,8 +977,12 @@ fun ChatScreen(
                         if (peerTyping && typingStyle == "text") {
                             Text(stringResource(R.string.chat_typing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
+                        if (disappearMs > 0L && !(peerTyping && typingStyle == "text")) {
+                            Text("⏳ " + durationText(disappearMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
+                TextButton(onClick = { searching = true }) { Text("🔍", style = MaterialTheme.typography.titleLarge) }
             }
         }
 
@@ -801,7 +1010,7 @@ fun ChatScreen(
                     .padding(horizontal = 12.dp, vertical = 4.dp)
                     .clickable {
                         val idx = messages.indexOfFirst { it.n == pin.n }
-                        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
+                        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } else jumpTo(pin.n)
                         pinIdx = (pinIdx + 1) % pins.size
                     },
             ) {
@@ -864,6 +1073,9 @@ fun ChatScreen(
             }
         }
 
+        if (searching && searchQuery.isNotBlank()) {
+            SearchResults(hits, shownName, { n -> jumpTo(n) }, Modifier.weight(1f).fillMaxWidth())
+        } else {
         // my last message the other person has read gets the little eye
         val lastSeenN = seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n <= up }?.n }
         LazyColumn(
@@ -884,7 +1096,7 @@ fun ChatScreen(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSel && menuStyle == "bar") MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+                        .background(if ((isSel && menuStyle == "bar") || highlightN == m.n) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
                         .pointerInput(m.n) {
                             // swipe a message sideways to reply to it
                             detectHorizontalDragGestures(
@@ -996,6 +1208,8 @@ fun ChatScreen(
                                         }
                                     }
                                 }
+                                val vms = m.voiceMs
+                                if (vms != null) VoiceBubble(net, peerHash, m.n, vms, textColor)
                                 if (m.text.isNotEmpty()) {
                                     if (textSelectN == m.n) {
                                         SelectionContainer { Text(m.text, color = textColor) }
@@ -1034,10 +1248,12 @@ fun ChatScreen(
                                 onClick = { textSelectN = m.n; selected = null },
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.msg_action_forward)) },
-                            onClick = { forwarding = m; selected = null },
-                        )
+                        if (m.voiceMs == null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.msg_action_forward)) },
+                                onClick = { forwarding = m; selected = null },
+                            )
+                        }
                         ExtraMenuItems(
                             m = m,
                             pinned = pins.any { it.n == m.n },
@@ -1055,8 +1271,27 @@ fun ChatScreen(
             }
         }
 
+        }
+
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ErrorText(error)
+            if (jumped) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.clickable {
+                        messages.clear()
+                        latest = 0
+                        jumped = false
+                    },
+                ) {
+                    Text(
+                        "⬇  " + stringResource(R.string.chat_back_latest),
+                        Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
             val left = remaining
             val quoted = replyTo
             if (!canSend) {
@@ -1106,6 +1341,26 @@ fun ChatScreen(
                         TextButton(onClick = { replyTo = null }) { Text("✕") }
                     }
                 }
+                if (recording) {
+                    if (limitReached) Muted(stringResource(R.string.voice_limit))
+                    RecordingBar(
+                        elapsedMs = recElapsed,
+                        amps = amps,
+                        paused = recPaused,
+                        limitReached = limitReached,
+                        onDelete = { discardVoice() },
+                        onTogglePause = {
+                            if (recPaused) {
+                                recorder.resume()
+                                recPaused = false
+                            } else {
+                                recorder.pause()
+                                recPaused = true
+                            }
+                        },
+                        onSend = { sendVoice() },
+                    )
+                } else {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         shape = RoundedCornerShape(26.dp),
@@ -1131,19 +1386,21 @@ fun ChatScreen(
                         }
                     }
                     val canPost = !busy && input.isNotBlank()
+                    val showMic = input.isBlank() && editing == null
                     Surface(
                         shape = CircleShape,
-                        color = if (canPost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.size(48.dp).clickable(enabled = canPost) { send() },
+                        color = if (canPost || showMic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.size(48.dp).clickable(enabled = canPost || (showMic && !busy)) { if (showMic) onMicClick() else send() },
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                "↑",
+                                if (showMic) "🎙" else "↑",
                                 style = MaterialTheme.typography.titleLarge,
-                                color = if (canPost) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (canPost || showMic) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -1428,11 +1685,18 @@ private fun SystemNote(m: ChatMsg, peerName: String) {
     val text = when (m.sys) {
         "theme" -> stringResource(R.string.msg_sys_theme, who, stringResource(chatThemeOf(m.sysValue).label))
         "disappear" -> {
-            val ms = m.sysValue.toLongOrNull() ?: 0L
+            // the value is "sent:300000" or "read:300000" (older ones are just the number)
+            val parts = m.sysValue.split(":")
+            val mode = if (parts.size == 2) parts[0] else "sent"
+            val ms = (if (parts.size == 2) parts[1] else parts[0]).toLongOrNull() ?: 0L
             if (ms <= 0L) {
                 stringResource(R.string.msg_sys_disappear_off, who)
             } else {
-                stringResource(R.string.msg_sys_disappear_on, who, stringResource(disappearLabel(ms)))
+                stringResource(
+                    if (mode == "read") R.string.msg_sys_disappear_on_read else R.string.msg_sys_disappear_on_sent,
+                    who,
+                    durationText(ms),
+                )
             }
         }
         else -> ""
@@ -1445,5 +1709,29 @@ private fun SystemNote(m: ChatMsg, peerName: String) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** What searching inside the chat found, newest first. Tap one to jump to it. */
+@Composable
+private fun SearchResults(hits: List<SearchHit>, peerName: String, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    LazyColumn(
+        modifier = modifier.padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (hits.isEmpty()) item { Muted(stringResource(R.string.chat_search_none)) }
+        items(hits) { h ->
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth().clickable { onPick(h.n) },
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Muted((if (h.mine) stringResource(R.string.msg_you) else peerName) + " · " + agoShort(ctx, h.at))
+                    Text(h.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material3.Surface
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,6 +69,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
     var verified by remember { mutableStateOf(false) }
     var theme by remember { mutableStateOf("default") }
     var disappear by remember { mutableStateOf(0L) }
+    var disappearMode by remember { mutableStateOf("sent") }
     var nick by remember { mutableStateOf("") }
     var seen by remember { mutableStateOf("default") }
     var deleteMode by remember { mutableStateOf("announce") }
@@ -82,6 +84,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
         if (st == null) return
         theme = st.optString("theme", "default")
         disappear = st.optLong("disappear", 0L)
+        disappearMode = st.optString("disappearMode", "sent")
         nick = st.optString("nick")
         seen = st.optString("seen", "default")
         deleteMode = st.optString("deleteMode", "announce")
@@ -138,7 +141,15 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
         }
 
         SettingRow("🎨", stringResource(R.string.cs_theme), stringResource(chatThemeOf(theme).label)) { dialog = "theme" }
-        SettingRow("⏳", stringResource(R.string.cs_disappear), stringResource(disappearLabel(disappear))) { dialog = "disappear" }
+        SettingRow(
+            "⏳",
+            stringResource(R.string.cs_disappear),
+            if (disappear <= 0L) {
+                stringResource(R.string.cs_off)
+            } else {
+                durationText(disappear) + " · " + stringResource(if (disappearMode == "read") R.string.cs_after_read else R.string.cs_after_sent)
+            },
+        ) { dialog = "disappear" }
         SettingRow(
             "🗑",
             stringResource(R.string.cs_delete),
@@ -188,21 +199,14 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             confirmButton = { TextButton(onClick = { dialog = "" }) { Text(stringResource(R.string.close)) } },
         )
 
-        "disappear" -> AlertDialog(
-            onDismissRequest = { dialog = "" },
-            title = { Text(stringResource(R.string.cs_disappear)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    for (ms in DisappearOptions) {
-                        ChoiceRow(disappear == ms, stringResource(disappearLabel(ms))) {
-                            post("/candy/dm/settings", JSONObject().put("disappear", ms))
-                            dialog = ""
-                        }
-                    }
-                    Muted(stringResource(R.string.cs_disappear_hint))
-                }
+        "disappear" -> DisappearDialog(
+            mode = disappearMode,
+            ms = disappear,
+            onSave = { newMs, newMode ->
+                post("/candy/dm/settings", JSONObject().put("disappear", newMs).put("disappearMode", newMode))
+                dialog = ""
             },
-            confirmButton = { TextButton(onClick = { dialog = "" }) { Text(stringResource(R.string.close)) } },
+            onDismiss = { dialog = "" },
         )
 
         "delete" -> AlertDialog(
@@ -281,4 +285,78 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
 
         else -> Unit
     }
+}
+
+@Composable
+private fun ChipButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(label, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/**
+ * Disappearing messages for this chat: when they go (a while after sending, or a while after the
+ * other person reads them), and how long, from the quick choices or typed in (1 minute to 30 days).
+ */
+@Composable
+private fun DisappearDialog(mode: String, ms: Long, onSave: (Long, String) -> Unit, onDismiss: () -> Unit) {
+    var draftMode by remember { mutableStateOf(mode) }
+    var draftMs by remember { mutableStateOf(if (ms > 0L) ms else 86_400_000L) }
+    var customText by remember { mutableStateOf("") }
+    var unit by remember { mutableStateOf("h") }
+    val unitMs = when (unit) {
+        "m" -> 60_000L
+        "d" -> 86_400_000L
+        else -> 3_600_000L
+    }
+    val customMs = (customText.toLongOrNull() ?: 0L) * unitMs
+    val customOk = customText.isEmpty() || customMs in 60_000L..2_592_000_000L
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.cs_disappear)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SectionTitle(stringResource(R.string.cs_disappear_when))
+                ChoiceRow(draftMode == "sent", stringResource(R.string.cs_after_sent)) { draftMode = "sent" }
+                ChoiceRow(draftMode == "read", stringResource(R.string.cs_after_read)) { draftMode = "read" }
+                SectionTitle(stringResource(R.string.cs_disappear_after))
+                for (row in DisappearPresets.chunked(3)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (p in row) {
+                            ChipButton(durationText(p), customText.isEmpty() && draftMs == p) {
+                                draftMs = p
+                                customText = ""
+                            }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Field(
+                        stringResource(R.string.cs_custom),
+                        customText,
+                        { customText = it.filter { ch -> ch.isDigit() }.take(4) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ChipButton(stringResource(R.string.cs_unit_min), unit == "m") { unit = "m" }
+                    ChipButton(stringResource(R.string.cs_unit_hour), unit == "h") { unit = "h" }
+                    ChipButton(stringResource(R.string.cs_unit_day), unit == "d") { unit = "d" }
+                }
+                if (!customOk) Muted(stringResource(R.string.cs_custom_range))
+                Muted(stringResource(R.string.cs_disappear_hint))
+                TextButton(onClick = { onSave(0L, draftMode) }) { Text(stringResource(R.string.cs_turn_off)) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(if (customText.isNotEmpty()) customMs else draftMs, draftMode) },
+                enabled = customOk,
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
