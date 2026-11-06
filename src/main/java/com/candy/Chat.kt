@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -86,6 +88,8 @@ private class ChatThread(
     val lastText: String,
     val lastKind: String,
     val lastDeleted: Boolean,
+    val nick: String,
+    val lastSeen: Boolean,
     val unread: Int,
 )
 
@@ -113,6 +117,10 @@ private data class ChatMsg(
     val deleted: Boolean,
     val myReaction: String?,
     val theirReaction: String?,
+    val forwarded: Boolean,
+    val hidden: Boolean,
+    val sys: String?,
+    val sysValue: String,
 )
 
 /** A pinned message: which one, until when, and whether I pinned it. */
@@ -169,6 +177,10 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         deleted = optBoolean("deleted"),
         myReaction = optJSONObject("reactions")?.nullableString("mine"),
         theirReaction = optJSONObject("reactions")?.nullableString("theirs"),
+        forwarded = optBoolean("forwarded"),
+        hidden = optBoolean("hidden"),
+        sys = nullableString("sys"),
+        sysValue = optString("value"),
     )
 }
 
@@ -212,6 +224,8 @@ fun ChatsScreen(
                             lastText = o.optJSONObject("last")?.optString("text").orEmpty(),
                             lastKind = o.optJSONObject("last")?.optString("kind").orEmpty(),
                             lastDeleted = o.optJSONObject("last")?.optBoolean("deleted") == true,
+                            nick = o.optString("nick"),
+                            lastSeen = o.optJSONObject("last")?.optBoolean("seen") == true,
                             unread = o.optInt("unread"),
                         ),
                     )
@@ -342,15 +356,16 @@ fun ChatsScreen(
                     Avatar(t.hash, net.token, 48.dp)
                     Column(Modifier.weight(1f)) {
                         Text(
-                            t.name.ifBlank { t.hash },
+                            t.nick.ifBlank { t.name.ifBlank { t.hash } },
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            when {
+                            (if (t.lastSeen) "👁 " else "") + when {
                                 t.lastDeleted -> stringResource(R.string.chat_last_deleted)
+                                t.lastKind == "sys" -> "⚙️"
                                 t.lastText.isNotEmpty() -> t.lastText
                                 t.lastKind == "sticker" -> "😊"
                                 t.lastKind == "track" -> "🖼️"
@@ -405,6 +420,7 @@ fun ChatScreen(
     onOpenProfile: (String) -> Unit,
     onOpenLoop: (String, String) -> Unit,
     onOpenPost: (String) -> Unit,
+    onOpenSettings: (String) -> Unit,
     onFlare: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -437,7 +453,9 @@ fun ChatScreen(
     var pinning by remember { mutableStateOf<ChatMsg?>(null) }
     var deleting by remember { mutableStateOf<ChatMsg?>(null) }
     var emojiMore by remember { mutableStateOf<ChatMsg?>(null) }
-    var showOptions by remember { mutableStateOf(false) }
+    var seenUpTo by remember { mutableStateOf<Int?>(null) }
+    var themeId by remember { mutableStateOf("default") }
+    var nickname by remember { mutableStateOf("") }
     var moreMenu by remember { mutableStateOf(false) }
     val menuStyle = remember { ChatPrefs.menuStyle(ctx) }
     val typingStyle = remember { ChatPrefs.typingStyle(ctx) }
@@ -455,7 +473,7 @@ fun ChatScreen(
             if (arr != null) {
                 for (i in 0 until arr.length()) {
                     val m = arr.optJSONObject(i)?.toChatMsg() ?: continue
-                    if (messages.none { it.n == m.n }) messages.add(m)
+                    if (!m.hidden && messages.none { it.n == m.n }) messages.add(m)
                 }
             }
             latest = maxOf(latest, body?.optInt("latest", latest) ?: latest)
@@ -465,7 +483,9 @@ fun ChatScreen(
                 for (i in 0 until changes.length()) {
                     val c = changes.optJSONObject(i)?.toChatMsg() ?: continue
                     val idx = messages.indexOfFirst { it.n == c.n }
-                    if (idx >= 0) messages[idx] = c
+                    if (idx >= 0) {
+                        if (c.hidden) messages.removeAt(idx) else messages[idx] = c
+                    }
                 }
             }
             val removedArr = body?.optJSONArray("removed")
@@ -492,10 +512,13 @@ fun ChatScreen(
                 deleteMode = st.optString("deleteMode", "announce")
                 val pr = st.optJSONObject("proposal")
                 proposal = if (pr == null) null else pr.optBoolean("mine")
+                themeId = st.optString("theme", "default")
+                nickname = st.optString("nick")
             }
             canSend = body?.optBoolean("canSend", true) ?: true
             remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
             flow = body?.optJSONObject("flow")?.toFlow()
+            seenUpTo = if (body == null || body.isNull("seenUpTo")) null else body.optInt("seenUpTo")
             peerTyping = body?.optBoolean("typing") == true
             error = ""
         } else {
@@ -555,6 +578,13 @@ fun ChatScreen(
         }
     }
 
+    fun hideMsg(m: ChatMsg) {
+        scope.launch {
+            val r = net.post("/candy/dm/hide", JSONObject().put("hash", bareHash(hash)).put("n", m.n))
+            if (r.ok) messages.removeAll { it.n == m.n } else error = r.message(ctx)
+        }
+    }
+
     fun pinMsg(m: ChatMsg, duration: String) {
         scope.launch {
             val r = net.post("/candy/dm/pin", JSONObject().put("hash", bareHash(hash)).put("n", m.n).put("duration", duration))
@@ -585,13 +615,6 @@ fun ChatScreen(
         deleteMode = st.optString("deleteMode", "announce")
         val pr = st.optJSONObject("proposal")
         proposal = if (pr == null) null else pr.optBoolean("mine")
-    }
-
-    fun changeDeleteMode(mode: String) {
-        scope.launch {
-            val r = net.post("/candy/dm/deletemode", JSONObject().put("hash", bareHash(hash)).put("mode", mode))
-            if (r.ok) applySettings(r.body) else error = r.message(ctx)
-        }
     }
 
     fun answerDeleteMode(accept: Boolean) {
@@ -669,9 +692,21 @@ fun ChatScreen(
         }
     }
 
-    val shownName = peerName.ifBlank { peerHash }
+    val shownName = nickname.ifBlank { peerName.ifBlank { peerHash } }
+    val theme = chatThemeOf(themeId)
 
-    Column(Modifier.fillMaxSize().imePadding()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .then(
+                if (theme.tint != null) {
+                    Modifier.background(Brush.verticalGradient(listOf(theme.tint.copy(alpha = 0.28f), Color.Transparent)))
+                } else {
+                    Modifier
+                },
+            )
+            .imePadding(),
+    ) {
         val sel = selected
         if (sel != null && menuStyle == "bar") {
             // a message is selected: the bar on top turns into its actions, with the reactions under it
@@ -689,6 +724,7 @@ fun ChatScreen(
                             Text("📋", style = MaterialTheme.typography.titleLarge)
                         }
                         TextButton(onClick = { forwarding = sel; selected = null }) { Text("↪", style = MaterialTheme.typography.titleLarge) }
+                        TextButton(onClick = { deleting = sel; selected = null }) { Text("🗑", style = MaterialTheme.typography.titleLarge) }
                         Box {
                             TextButton(onClick = { moreMenu = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
@@ -705,6 +741,7 @@ fun ChatScreen(
                                     onPin = { moreMenu = false; pinning = sel; selected = null },
                                     onUnpin = { moreMenu = false; unpinMsg(sel); selected = null },
                                     onDelete = { moreMenu = false; deleting = sel; selected = null },
+                                    showDelete = false,
                                 )
                             }
                         }
@@ -725,7 +762,7 @@ fun ChatScreen(
             ) {
                 TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
                 Row(
-                    Modifier.weight(1f).clickable { onOpenProfile(peerHash) },
+                    Modifier.weight(1f).clickable { onOpenSettings(peerHash) },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -737,7 +774,6 @@ fun ChatScreen(
                         }
                     }
                 }
-                TextButton(onClick = { showOptions = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
             }
         }
 
@@ -828,12 +864,18 @@ fun ChatScreen(
             }
         }
 
+        // my last message the other person has read gets the little eye
+        val lastSeenN = seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n <= up }?.n }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(messages) { m ->
+                if (m.sys != null) {
+                    SystemNote(m, shownName)
+                    return@items
+                }
                 val isSel = selected?.n == m.n
                 var drag by remember(m.n) { mutableStateOf(0f) }
                 var dragging by remember(m.n) { mutableStateOf(false) }
@@ -891,6 +933,7 @@ fun ChatScreen(
                         val quoteWho = if (m.replyMine) stringResource(R.string.nav_me) else shownName
                         if (stickerId != null) {
                             Column(horizontalAlignment = if (m.mine) Alignment.End else Alignment.Start) {
+                                if (m.forwarded) ForwardedLabel(MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (m.replyN > 0) QuoteBlock(m, quoteWho, MaterialTheme.colorScheme.onSurface)
                                 StickerImage(
                                     stickerId, net.token, 120.dp,
@@ -903,11 +946,12 @@ fun ChatScreen(
                                     .widthIn(max = 260.dp)
                                     .clip(RoundedCornerShape(16.dp))
                                     .combinedClickable(onClick = {}, onLongClick = { selected = m })
-                                    .background(if (m.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .background(if (m.mine) (theme.mine ?: MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.surfaceVariant)
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                val textColor = if (m.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                val textColor = if (m.mine) (theme.onMine ?: MaterialTheme.colorScheme.onPrimary) else MaterialTheme.colorScheme.onSurface
+                                if (m.forwarded) ForwardedLabel(textColor.copy(alpha = 0.8f))
                                 if (m.replyN > 0) QuoteBlock(m, quoteWho, textColor)
                                 val loopId = m.loopId
                                 if (loopId != null) {
@@ -965,6 +1009,9 @@ fun ChatScreen(
                             }
                         }
                         ReactionChips(m) { react(m, m.myReaction.orEmpty()) }
+                        if (m.mine && m.n == lastSeenN) {
+                            Text("👁", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 2.dp))
+                        }
                         }
                       }
                     }
@@ -998,6 +1045,7 @@ fun ChatScreen(
                             onPin = { pinning = m; selected = null },
                             onUnpin = { unpinMsg(m); selected = null },
                             onDelete = { deleting = m; selected = null },
+                            showDelete = true,
                         )
                     }
                 }
@@ -1138,8 +1186,20 @@ fun ChatScreen(
     if (delTarget != null) {
         AlertDialog(
             onDismissRequest = { deleting = null },
-            text = { Text(stringResource(R.string.msg_delete_confirm)) },
-            confirmButton = { TextButton(onClick = { deleteMsg(delTarget); deleting = null }) { Text(stringResource(R.string.msg_action_delete)) } },
+            title = { Text(stringResource(R.string.msg_action_delete)) },
+            text = {
+                Column {
+                    if (delTarget.mine) {
+                        TextButton(onClick = { deleteMsg(delTarget); deleting = null }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.msg_delete_everyone))
+                        }
+                    }
+                    TextButton(onClick = { hideMsg(delTarget); deleting = null }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.msg_delete_me))
+                    }
+                }
+            },
+            confirmButton = {},
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
@@ -1149,16 +1209,6 @@ fun ChatScreen(
         EmojiPickerDialog(onPick = { e -> react(emojiTarget, e); emojiMore = null }, onDismiss = { emojiMore = null })
     }
 
-    if (showOptions) {
-        ChatOptionsDialog(
-            name = shownName,
-            deleteMode = deleteMode,
-            proposal = proposal,
-            onMode = { changeDeleteMode(it) },
-            onAnswer = { answerDeleteMode(it) },
-            onDismiss = { showOptions = false },
-        )
-    }
 
     val sm = stickerMsg
     val smSticker = sm?.stickerId
@@ -1240,7 +1290,7 @@ private fun ForwardDialog(net: Net, m: ChatMsg, onDismiss: () -> Unit) {
         scope.launch {
             busy = true
             error = ""
-            val body = JSONObject().put("hash", bareHash(hash)).put("text", m.text)
+            val body = JSONObject().put("hash", bareHash(hash)).put("text", m.text).put("fwd", true)
             m.stickerId?.let { body.put("sticker", it) }
             if (!m.loopGone) m.loopId?.let { body.put("loop", it) }
             if (!m.trackGone) m.trackId?.let { body.put("track", it) }
@@ -1326,6 +1376,7 @@ private fun ExtraMenuItems(
     onPin: () -> Unit,
     onUnpin: () -> Unit,
     onDelete: () -> Unit,
+    showDelete: Boolean,
 ) {
     if (canEdit(m)) {
         DropdownMenuItem(text = { Text("✏️  " + stringResource(R.string.msg_action_edit)) }, onClick = onEdit)
@@ -1335,7 +1386,7 @@ private fun ExtraMenuItems(
     } else {
         DropdownMenuItem(text = { Text("📌  " + stringResource(R.string.msg_action_pin)) }, onClick = onPin)
     }
-    if (m.mine) {
+    if (showDelete) {
         DropdownMenuItem(text = { Text("🗑  " + stringResource(R.string.msg_action_delete)) }, onClick = onDelete)
     }
 }
@@ -1360,36 +1411,39 @@ private fun EmojiPickerDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/** The options of one chat. For now: how deleting messages works between the two of you. */
 @Composable
-private fun ChatOptionsDialog(
-    name: String,
-    deleteMode: String,
-    proposal: Boolean?,
-    onMode: (String) -> Unit,
-    onAnswer: (Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.chat_options_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                SectionTitle(stringResource(R.string.msg_delete_mode))
-                ChoiceRow(deleteMode == "announce", stringResource(R.string.msg_delete_announce)) { onMode("announce") }
-                ChoiceRow(deleteMode == "silent", stringResource(R.string.msg_delete_silent)) { onMode("silent") }
-                if (proposal == true) {
-                    Muted(stringResource(R.string.msg_delete_proposal_mine, name))
-                    TextButton(onClick = { onAnswer(false) }) { Text(stringResource(R.string.msg_cancel_request)) }
-                } else if (proposal == false) {
-                    Text(stringResource(R.string.msg_delete_proposal_theirs, name), style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onAnswer(true) }) { Text(stringResource(R.string.msg_accept)) }
-                        TextButton(onClick = { onAnswer(false) }) { Text(stringResource(R.string.msg_decline)) }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+private fun ForwardedLabel(color: Color) {
+    Text(
+        "↪ " + stringResource(R.string.msg_forwarded),
+        color = color,
+        style = MaterialTheme.typography.labelSmall,
+        fontStyle = FontStyle.Italic,
     )
+}
+
+/** A line in the middle of the chat: someone changed the theme or disappearing messages. */
+@Composable
+private fun SystemNote(m: ChatMsg, peerName: String) {
+    val who = if (m.mine) stringResource(R.string.msg_you) else peerName
+    val text = when (m.sys) {
+        "theme" -> stringResource(R.string.msg_sys_theme, who, stringResource(chatThemeOf(m.sysValue).label))
+        "disappear" -> {
+            val ms = m.sysValue.toLongOrNull() ?: 0L
+            if (ms <= 0L) {
+                stringResource(R.string.msg_sys_disappear_off, who)
+            } else {
+                stringResource(R.string.msg_sys_disappear_on, who, stringResource(disappearLabel(ms)))
+            }
+        }
+        else -> ""
+    }
+    if (text.isNotEmpty()) {
+        Text(
+            text,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

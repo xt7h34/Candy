@@ -156,6 +156,7 @@ sealed class Dest {
     object NewPost : Dest()
     class Story(val hash: String) : Dest()
     class Chat(val hash: String) : Dest()
+    class ChatSettings(val hash: String) : Dest()
     object Camera : Dest()
     object StageEdit : Dest()
     object LoopEdit : Dest()
@@ -361,8 +362,10 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
                                 onOpenProfile = ::openProfile,
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
                                 onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                                onOpenSettings = { stack.add(Dest.ChatSettings(it)) },
                                 onFlare = { h -> openCamera("flare", h) },
                             )
+                            is Dest.ChatSettings -> ChatSettingsScreen(net, top.hash, back, ::openProfile)
                             Dest.Memories -> MemoriesScreen(
                                 onBack = back,
                                 onUse = { picked, dest ->

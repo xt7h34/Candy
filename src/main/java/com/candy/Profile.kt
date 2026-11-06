@@ -496,7 +496,7 @@ fun MeScreen(
                 OutlinedButton(onClick = { msgSettings = true }, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.msg_settings_title))
                 }
-                if (msgSettings) MessageSettingsDialog { msgSettings = false }
+                if (msgSettings) MessageSettingsDialog(net) { msgSettings = false }
 
                 val loc = data.optJSONObject("location")
                 if (loc != null) {

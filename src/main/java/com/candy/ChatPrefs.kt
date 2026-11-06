@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,8 +58,18 @@ internal fun ChoiceRow(selected: Boolean, label: String, onClick: () -> Unit) {
 
 /** The "Message settings" window in your account. */
 @Composable
-fun MessageSettingsDialog(onDismiss: () -> Unit) {
+fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var hideSeen by remember { mutableStateOf(false) }
+    var seenLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val r = net.get("/candy/me")
+        if (r.ok) {
+            hideSeen = r.body?.optBoolean("hideSeen") == true
+            seenLoaded = true
+        }
+    }
     var menu by remember { mutableStateOf(ChatPrefs.menuStyle(ctx)) }
     var typing by remember { mutableStateOf(ChatPrefs.typingStyle(ctx)) }
 
@@ -81,6 +96,22 @@ fun MessageSettingsDialog(onDismiss: () -> Unit) {
                 ChoiceRow(typing == "bubble", stringResource(R.string.msg_typing_bubble)) {
                     typing = "bubble"
                     ChatPrefs.setTypingStyle(ctx, "bubble")
+                }
+                Spacer(Modifier.padding(top = 8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_seen_share), Modifier.weight(1f))
+                    Switch(
+                        checked = !hideSeen,
+                        enabled = seenLoaded,
+                        onCheckedChange = { on ->
+                            hideSeen = !on
+                            scope.launch { net.post("/candy/seen/default", JSONObject().put("hide", !on)) }
+                        },
+                    )
                 }
             }
         },
