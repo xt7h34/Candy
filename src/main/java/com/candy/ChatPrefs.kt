@@ -63,10 +63,16 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var hideSeen by remember { mutableStateOf(false) }
     var seenLoaded by remember { mutableStateOf(false) }
+    var pushEnabled by remember { mutableStateOf(true) }
+    var pushPreview by remember { mutableStateOf(true) }
+    var pushReady by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         val r = net.get("/candy/me")
         if (r.ok) {
             hideSeen = r.body?.optBoolean("hideSeen") == true
+            pushEnabled = r.body?.optBoolean("pushEnabled", true) != false
+            pushPreview = r.body?.optBoolean("pushPreview", true) != false
+            pushReady = r.body?.optBoolean("pushReady", true) != false
             seenLoaded = true
         }
     }
@@ -112,6 +118,43 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                             scope.launch { net.post("/candy/seen/default", JSONObject().put("hide", !on)) }
                         },
                     )
+                }
+                Spacer(Modifier.padding(top = 8.dp))
+                SectionTitle(stringResource(R.string.msg_push_title))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_push_enabled), Modifier.weight(1f))
+                    Switch(
+                        checked = pushEnabled,
+                        enabled = seenLoaded,
+                        onCheckedChange = { on ->
+                            pushEnabled = on
+                            scope.launch { net.post("/candy/push/prefs", JSONObject().put("enabled", on)) }
+                        },
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_push_preview), Modifier.weight(1f))
+                    Switch(
+                        checked = pushPreview,
+                        enabled = seenLoaded && pushEnabled,
+                        onCheckedChange = { on ->
+                            pushPreview = on
+                            scope.launch { net.post("/candy/push/prefs", JSONObject().put("preview", on)) }
+                        },
+                    )
+                }
+                if (!Push.firebaseReady(ctx)) {
+                    Muted(stringResource(R.string.msg_push_app_off))
+                } else if (!pushReady) {
+                    Muted(stringResource(R.string.msg_push_server_off))
                 }
             }
         },

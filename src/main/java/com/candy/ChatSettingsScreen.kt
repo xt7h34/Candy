@@ -70,6 +70,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
     var theme by remember { mutableStateOf("default") }
     var disappear by remember { mutableStateOf(0L) }
     var disappearMode by remember { mutableStateOf("sent") }
+    var mute by remember { mutableStateOf(false) }
     var nick by remember { mutableStateOf("") }
     var seen by remember { mutableStateOf("default") }
     var deleteMode by remember { mutableStateOf("announce") }
@@ -85,6 +86,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
         theme = st.optString("theme", "default")
         disappear = st.optLong("disappear", 0L)
         disappearMode = st.optString("disappearMode", "sent")
+        mute = st.optBoolean("mute")
         nick = st.optString("nick")
         seen = st.optString("seen", "default")
         deleteMode = st.optString("deleteMode", "announce")
@@ -140,6 +142,11 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             ErrorText(error)
         }
 
+        SettingRow(
+            "🔔",
+            stringResource(R.string.cs_notifications),
+            stringResource(if (mute) R.string.cs_notif_off else R.string.cs_notif_on),
+        ) { post("/candy/dm/settings", JSONObject().put("mute", !mute)) }
         SettingRow("🎨", stringResource(R.string.cs_theme), stringResource(chatThemeOf(theme).label)) { dialog = "theme" }
         SettingRow(
             "⏳",

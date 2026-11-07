@@ -1,5 +1,11 @@
 package com.candy
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -43,13 +49,25 @@ class MainActivity : ComponentActivity() {
     /** A one-time code from the Kanade app, to sign in with the same account. */
     private var handoff by mutableStateOf<String?>(null)
 
+    /** A chat to open, because a notification was tapped. */
+    private var openChat by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handoff = handoffCode(intent)
+        openChat = intent.getStringExtra(Push.EXTRA_CHAT)
+        Push.ensureChannel(this)
         setContent {
             CandyTheme {
-                CandyRoot(handoff) {
+                CandyRoot(
+                    handoff = handoff,
+                    openChat = openChat,
+                    onChatOpened = {
+                        openChat = null
+                        intent.removeExtra(Push.EXTRA_CHAT)
+                    },
+                ) {
                     handoff = null
                     intent.removeExtra(HANDOFF_EXTRA)
                 }
@@ -57,10 +75,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        PushState.foreground = true
+    }
+
+    override fun onStop() {
+        PushState.foreground = false
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handoff = handoffCode(intent)
+        openChat = intent.getStringExtra(Push.EXTRA_CHAT)
     }
 }
 
@@ -72,7 +101,7 @@ private fun handoffCode(i: Intent?): String? =
 
 /** Signed out: the sign-in screen. Signed in: the app. */
 @Composable
-fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
+fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onHandoffDone: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf(SessionStore.load(ctx)) }
@@ -131,8 +160,11 @@ fun CandyRoot(handoff: String?, onHandoffDone: () -> Unit) {
         Shell(
             session = s,
             net = net,
+            openChat = openChat,
+            onChatOpened = onChatOpened,
             onSignOut = {
                 scope.launch {
+                    Push.unregister(ctx, net)
                     net.post("/auth/logout")
                     SessionStore.clear(ctx)
                     AvatarCache.clear()
@@ -167,8 +199,9 @@ sealed class Dest {
 }
 
 @Composable
-fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
+fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Unit, onSignOut: () -> Unit) {
     val myHash = session.profile.optString("hash")
+    val pushCtx = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(0) }
     val stack = remember { mutableStateListOf<Dest>() }
     // goes up whenever something is posted or deleted, so the feed and the profile reload
@@ -184,6 +217,29 @@ fun Shell(session: Session, net: Net, onSignOut: () -> Unit) {
     var commentsFor by remember { mutableStateOf<String?>(null) }
 
     UpdatePrompt()
+
+    // a notification was tapped: open that chat
+    LaunchedEffect(openChat) {
+        val h = openChat ?: return@LaunchedEffect
+        stack.clear()
+        stack.add(Dest.Chat(h))
+        onChatOpened()
+    }
+
+    // notifications: ask once (Android 13 and up), then tell the bot where to send them
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(pushCtx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            val prefs = pushCtx.getSharedPreferences("candy_push", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("asked", false)) {
+                prefs.edit().putBoolean("asked", true).apply()
+                notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        Push.register(pushCtx, net)
+    }
 
     LaunchedEffect(refreshTick, tab, stack.size) {
         val r = net.get("/candy/dm/unread")

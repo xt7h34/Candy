@@ -337,4 +337,14 @@
     <string name="voice_no_permission">Allow the microphone to record voice messages</string>
     <string name="voice_too_short">The recording is too short</string>
     <string name="voice_limit">You reached the 5 minute limit</string>
+    <string name="push_channel_messages">Messages</string>
+    <string name="push_new_message">New message</string>
+    <string name="msg_push_title">Notifications</string>
+    <string name="msg_push_enabled">Notify me about new messages</string>
+    <string name="msg_push_preview">Show the message text in notifications</string>
+    <string name="msg_push_server_off">Notifications are not set up on the bot yet</string>
+    <string name="msg_push_app_off">This version has no notification setup</string>
+    <string name="cs_notifications">Notifications</string>
+    <string name="cs_notif_on">On</string>
+    <string name="cs_notif_off">Muted</string>
 </resources>

@@ -737,6 +737,13 @@ fun ChatScreen(
         }
     }
 
+    // no notification for the chat you are looking at, and its old one goes away
+    DisposableEffect(hash) {
+        PushState.openChat = bareHash(hash)
+        Push.cancel(ctx, hash)
+        onDispose { if (PushState.openChat == bareHash(hash)) PushState.openChat = null }
+    }
+
     fun replaceMsg(m: ChatMsg) {
         val idx = messages.indexOfFirst { it.n == m.n }
         if (idx >= 0) messages[idx] = m

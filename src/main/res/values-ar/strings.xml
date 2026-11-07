@@ -337,4 +337,14 @@
     <string name="voice_no_permission">اسمح بالميكروفون عشان تسجل فويس</string>
     <string name="voice_too_short">التسجيل قصير أوي</string>
     <string name="voice_limit">وصلت للحد الأقصى 5 دقايق</string>
+    <string name="push_channel_messages">الرسايل</string>
+    <string name="push_new_message">رسالة جديدة</string>
+    <string name="msg_push_title">الإشعارات</string>
+    <string name="msg_push_enabled">نبّهني بالرسايل الجديدة</string>
+    <string name="msg_push_preview">اعرض نص الرسالة في الإشعار</string>
+    <string name="msg_push_server_off">الإشعارات لسه مش متظبطة على البوت</string>
+    <string name="msg_push_app_off">النسخة دي من غير إعداد الإشعارات</string>
+    <string name="cs_notifications">الإشعارات</string>
+    <string name="cs_notif_on">شغالة</string>
+    <string name="cs_notif_off">مكتومة</string>
 </resources>
