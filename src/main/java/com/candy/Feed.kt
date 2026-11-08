@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -72,8 +74,7 @@ fun FeedScreen(
     var reload by remember { mutableStateOf(0) }
     var composing by remember { mutableStateOf(false) }
 
-    suspend fun loadPosts(before: Long?) {
-        val r = net.get("/candy/posts/feed" + if (before != null) "?before=$before" else "")
+    fun applyPosts(r: ApiResult, before: Long?) {
         if (r.ok) {
             val page = r.body?.optJSONArray("items").toPosts()
             posts = if (before == null) page else posts + page
@@ -84,18 +85,43 @@ fun FeedScreen(
         }
     }
 
+    suspend fun loadPosts(before: Long?) {
+        applyPosts(net.get("/candy/posts/feed" + if (before != null) "?before=$before" else ""), before)
+    }
+
+    // your own drifts come first, then the ones from people you follow
+    fun applyDrifts(body: JSONObject?) {
+        drifts = body?.optJSONArray("mine").toDrifts() + body?.optJSONArray("items").toDrifts()
+    }
+
     LaunchedEffect(reload, refreshKey) {
         loading = true
-        val r = net.get("/candy/feed")
-        if (r.ok) {
-            // your own drifts come first, then the ones from people you follow
-            drifts = r.body?.optJSONArray("mine").toDrifts() + r.body?.optJSONArray("items").toDrifts()
-        } else {
-            error = r.message(ctx)
+        // The feed as it was last time goes on screen at once (only when nothing is shown yet), so opening the app never starts
+        // with a spinner; the fresh answers replace it a moment later.
+        if (posts.isEmpty() && drifts.isEmpty() && stories.isEmpty()) {
+            val savedFeed = net.peek("/candy/feed")
+            val savedStories = net.peek("/candy/stories")
+            val savedPosts = net.peek("/candy/posts/feed")
+            if (posts.isEmpty() && drifts.isEmpty() && stories.isEmpty()) {
+                if (savedFeed != null) applyDrifts(savedFeed)
+                if (savedStories != null) stories = savedStories.optJSONArray("groups").toStoryGroups()
+                if (savedPosts != null) {
+                    posts = savedPosts.optJSONArray("items").toPosts()
+                    next = if (!savedPosts.isNull("next")) savedPosts.optLong("next") else null
+                }
+                if (posts.isNotEmpty() || drifts.isNotEmpty() || stories.isNotEmpty()) loading = false
+            }
         }
-        val s = net.get("/candy/stories")
+        // the three lists do not depend on each other: ask for them together
+        val (r, s, p) = coroutineScope {
+            val a = async { net.get("/candy/feed") }
+            val b = async { net.get("/candy/stories") }
+            val c = async { net.get("/candy/posts/feed") }
+            Triple(a.await(), b.await(), c.await())
+        }
+        if (r.ok) applyDrifts(r.body) else error = r.message(ctx)
         if (s.ok) stories = s.body?.optJSONArray("groups").toStoryGroups()
-        loadPosts(null)
+        applyPosts(p, null)
         loading = false
     }
 
@@ -149,7 +175,7 @@ fun FeedScreen(
                 }
             }
         }
-        items(posts) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
+        items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
         val more = next
         if (more != null) {
             item {

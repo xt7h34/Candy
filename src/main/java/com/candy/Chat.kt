@@ -8,6 +8,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.Brush
@@ -223,38 +225,56 @@ fun ChatsScreen(
     var error by remember { mutableStateOf("") }
     var tick by remember { mutableStateOf(0) }
 
+    fun parseThreads(arr: org.json.JSONArray?): List<ChatThread> {
+        val out = ArrayList<ChatThread>()
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val peer = o.optJSONObject("peer")
+                out.add(
+                    ChatThread(
+                        name = peer?.optString("name").orEmpty(),
+                        hash = peer?.optString("hash").orEmpty(),
+                        lastText = o.optJSONObject("last")?.optString("text").orEmpty(),
+                        lastKind = o.optJSONObject("last")?.optString("kind").orEmpty(),
+                        lastDeleted = o.optJSONObject("last")?.optBoolean("deleted") == true,
+                        nick = o.optString("nick"),
+                        lastSeen = o.optJSONObject("last")?.optBoolean("seen") == true,
+                        unread = o.optInt("unread"),
+                    ),
+                )
+            }
+        }
+        return out
+    }
+
+    // the inbox as it was last time, on screen at once; the fresh one replaces it a moment later
+    LaunchedEffect(Unit) {
+        if (threads.isEmpty()) {
+            val saved = net.peek("/candy/dm/inbox")
+            if (saved != null && threads.isEmpty()) {
+                threads = parseThreads(saved.optJSONArray("threads"))
+                loading = false
+            }
+        }
+    }
+
     PollingEffect(refreshKey to tick, 30_000L) {
-        val r = net.get("/candy/dm/inbox")
+        // the three lists are independent, so they are asked for together instead of one after the other
+        val (r, f, fl) = coroutineScope {
+            val a = async { net.get("/candy/dm/inbox") }
+            val b = async { net.get("/candy/flows") }
+            val c = async { net.get("/candy/flares") }
+            Triple(a.await(), b.await(), c.await())
+        }
         loading = false
         if (r.ok) {
-            val arr = r.body?.optJSONArray("threads")
-            val out = ArrayList<ChatThread>()
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    val peer = o.optJSONObject("peer")
-                    out.add(
-                        ChatThread(
-                            name = peer?.optString("name").orEmpty(),
-                            hash = peer?.optString("hash").orEmpty(),
-                            lastText = o.optJSONObject("last")?.optString("text").orEmpty(),
-                            lastKind = o.optJSONObject("last")?.optString("kind").orEmpty(),
-                            lastDeleted = o.optJSONObject("last")?.optBoolean("deleted") == true,
-                            nick = o.optString("nick"),
-                            lastSeen = o.optJSONObject("last")?.optBoolean("seen") == true,
-                            unread = o.optInt("unread"),
-                        ),
-                    )
-                }
-            }
-            threads = out
+            threads = parseThreads(r.body?.optJSONArray("threads"))
             error = ""
         } else {
             error = r.message(ctx)
         }
-        val f = net.get("/candy/flows")
         if (f.ok) flows = f.body?.optJSONArray("flows").toFlows()
-        val fl = net.get("/candy/flares")
         if (fl.ok) flareFriends = fl.body?.optJSONArray("friends").toFlareFriends()
     }
 
@@ -492,66 +512,106 @@ fun ChatScreen(
     val clipboard = LocalClipboardManager.current
     val maxDrag = with(LocalDensity.current) { 72.dp.toPx() }
 
-    PollingEffect(hash, { if (peerTyping) 1500L else 5000L }) {
-        val r = net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=" + latest + "&rev=" + rev)
+    // How many polls in a row brought nothing new. The longer it is quiet, the slower we ask (saves battery, data and the bot).
+    var quietRounds by remember { mutableStateOf(0) }
+    var showingSaved by remember { mutableStateOf(false) }
+
+    // One answer from the bot, fresh or saved, put on screen. True when it brought something new.
+    fun applyThread(body: JSONObject?): Boolean {
+        var fresh = false
+        val peer = body?.optJSONObject("peer")
+        peerName = peer?.optString("name").orEmpty()
+        peerHash = peer?.optString("hash").orEmpty().ifEmpty { hash }
+        val arr = body?.optJSONArray("messages")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val m = arr.optJSONObject(i)?.toChatMsg() ?: continue
+                if (!jumped && !m.hidden && messages.none { it.n == m.n }) {
+                    messages.add(m)
+                    fresh = true
+                }
+            }
+        }
+        latest = maxOf(latest, body?.optInt("latest", latest) ?: latest)
+        // old messages that were edited, reacted to or deleted, and ones that vanished without a trace
+        val changes = body?.optJSONArray("changes")
+        if (changes != null) {
+            for (i in 0 until changes.length()) {
+                val c = changes.optJSONObject(i)?.toChatMsg() ?: continue
+                val idx = messages.indexOfFirst { it.n == c.n }
+                if (idx >= 0) {
+                    if (c.hidden) messages.removeAt(idx) else messages[idx] = c
+                    fresh = true
+                }
+            }
+        }
+        val removedArr = body?.optJSONArray("removed")
+        if (removedArr != null) {
+            for (i in 0 until removedArr.length()) {
+                val rn = removedArr.optInt(i)
+                if (messages.removeAll { it.n == rn }) fresh = true
+            }
+        }
+        rev = body?.optInt("rev", rev) ?: rev
+        val pinArr = body?.optJSONArray("pins")
+        if (pinArr != null) {
+            val pinList = ArrayList<PinInfo>()
+            for (i in 0 until pinArr.length()) {
+                val p = pinArr.optJSONObject(i) ?: continue
+                val pm = p.optJSONObject("message")?.toChatMsg() ?: continue
+                pinList.add(PinInfo(p.optInt("n"), p.optLong("until"), p.optBoolean("mine"), pm))
+            }
+            pins.clear()
+            pins.addAll(pinList)
+        }
+        val st = body?.optJSONObject("settings")
+        if (st != null) {
+            deleteMode = st.optString("deleteMode", "announce")
+            val pr = st.optJSONObject("proposal")
+            proposal = if (pr == null) null else pr.optBoolean("mine")
+            themeId = st.optString("theme", "default")
+            nickname = st.optString("nick")
+            disappearMs = st.optLong("disappear", 0L)
+        }
+        canSend = body?.optBoolean("canSend", true) ?: true
+        remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
+        flow = body?.optJSONObject("flow")?.toFlow()
+        seenUpTo = if (body == null || body.isNull("seenUpTo")) null else body.optInt("seenUpTo")
+        peerTyping = body?.optBoolean("typing") == true
+        error = ""
+        return fresh
+    }
+
+    // the chat as it was last time, on screen at once while the fresh answer is on its way
+    LaunchedEffect(hash) {
+        if (messages.isEmpty() && latest == 0) {
+            val saved = net.peek("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=0&rev=0")
+            if (saved != null && messages.isEmpty() && latest == 0) {
+                applyThread(saved)
+                showingSaved = true
+            }
+        }
+    }
+
+    LaunchedEffect(messages.size) { quietRounds = 0 }
+
+    PollingEffect(hash, { if (peerTyping) 1500L else if (quietRounds >= 6) 10_000L else 5000L }) {
+        // while the saved copy is on screen, the first real answer is the whole chat again, and it replaces the copy
+        val replacing = showingSaved
+        val r = if (replacing) {
+            net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=0&rev=0")
+        } else {
+            net.get("/candy/dm/thread?hash=" + Uri.encode(bareHash(hash)) + "&after=" + latest + "&rev=" + rev)
+        }
         if (r.ok) {
-            val body = r.body
-            val peer = body?.optJSONObject("peer")
-            peerName = peer?.optString("name").orEmpty()
-            peerHash = peer?.optString("hash").orEmpty().ifEmpty { hash }
-            val arr = body?.optJSONArray("messages")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    val m = arr.optJSONObject(i)?.toChatMsg() ?: continue
-                    if (!jumped && !m.hidden && messages.none { it.n == m.n }) messages.add(m)
-                }
+            if (replacing) {
+                messages.clear()
+                latest = 0
+                rev = 0
+                showingSaved = false
             }
-            latest = maxOf(latest, body?.optInt("latest", latest) ?: latest)
-            // old messages that were edited, reacted to or deleted, and ones that vanished without a trace
-            val changes = body?.optJSONArray("changes")
-            if (changes != null) {
-                for (i in 0 until changes.length()) {
-                    val c = changes.optJSONObject(i)?.toChatMsg() ?: continue
-                    val idx = messages.indexOfFirst { it.n == c.n }
-                    if (idx >= 0) {
-                        if (c.hidden) messages.removeAt(idx) else messages[idx] = c
-                    }
-                }
-            }
-            val removedArr = body?.optJSONArray("removed")
-            if (removedArr != null) {
-                for (i in 0 until removedArr.length()) {
-                    val rn = removedArr.optInt(i)
-                    messages.removeAll { it.n == rn }
-                }
-            }
-            rev = body?.optInt("rev", rev) ?: rev
-            val pinArr = body?.optJSONArray("pins")
-            if (pinArr != null) {
-                val fresh = ArrayList<PinInfo>()
-                for (i in 0 until pinArr.length()) {
-                    val p = pinArr.optJSONObject(i) ?: continue
-                    val pm = p.optJSONObject("message")?.toChatMsg() ?: continue
-                    fresh.add(PinInfo(p.optInt("n"), p.optLong("until"), p.optBoolean("mine"), pm))
-                }
-                pins.clear()
-                pins.addAll(fresh)
-            }
-            val st = body?.optJSONObject("settings")
-            if (st != null) {
-                deleteMode = st.optString("deleteMode", "announce")
-                val pr = st.optJSONObject("proposal")
-                proposal = if (pr == null) null else pr.optBoolean("mine")
-                themeId = st.optString("theme", "default")
-                nickname = st.optString("nick")
-                disappearMs = st.optLong("disappear", 0L)
-            }
-            canSend = body?.optBoolean("canSend", true) ?: true
-            remaining = if (body != null && !body.isNull("remaining")) body.optInt("remaining") else null
-            flow = body?.optJSONObject("flow")?.toFlow()
-            seenUpTo = if (body == null || body.isNull("seenUpTo")) null else body.optInt("seenUpTo")
-            peerTyping = body?.optBoolean("typing") == true
-            error = ""
+            val fresh = applyThread(r.body)
+            quietRounds = if (fresh || peerTyping) 0 else quietRounds + 1
         } else {
             error = r.message(ctx)
         }

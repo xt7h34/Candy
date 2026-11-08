@@ -58,6 +58,9 @@ class MainActivity : ComponentActivity() {
         handoff = handoffCode(intent)
         openChat = intent.getStringExtra(Push.EXTRA_CHAT)
         Push.ensureChannel(this)
+        ApiCache.init(this)
+        MediaCache.init(this)
+        AvatarCache.init(this)
         setContent {
             CandyTheme {
                 CandyRoot(
@@ -125,6 +128,8 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
             val signedIn = Session(token, profile)
             SessionStore.save(ctx, signedIn)
             AvatarCache.clear()
+            ApiCache.clear()
+            VideoCache.clear(ctx)
             MediaCache.clear()
             StickerCache.clear()
             session = signedIn
@@ -152,6 +157,8 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
                 // The bot says this sign-in is over (signed out from another device, for example).
                 SessionStore.clear(ctx)
                 AvatarCache.clear()
+                ApiCache.clear()
+                VideoCache.clear(ctx)
                 MediaCache.clear()
                 StickerCache.clear()
                 session = null
@@ -168,6 +175,8 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
                     net.post("/auth/logout")
                     SessionStore.clear(ctx)
                     AvatarCache.clear()
+                    ApiCache.clear()
+                    VideoCache.clear(ctx)
                     MediaCache.clear()
                     StickerCache.clear()
                     session = null

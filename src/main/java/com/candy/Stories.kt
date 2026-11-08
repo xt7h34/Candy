@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,7 +99,7 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
     var group by remember { mutableStateOf<StoryGroup?>(null) }
     var index by remember { mutableStateOf(0) }
     var bmp by remember { mutableStateOf<Bitmap?>(null) }
-    var videoPath by remember { mutableStateOf<String?>(null) }
+    val watched = remember { mutableListOf<String>() }   // story videos opened here, thrown away when you leave
     var error by remember { mutableStateOf("") }
     var viewers by remember { mutableStateOf<List<Member>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -121,9 +122,12 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
         }
     }
 
-    // stage videos are saved in the cache while you watch, and removed when you leave
+    // story videos are kept only while you watch, and removed when you leave
     DisposableEffect(Unit) {
-        onDispose { ctx.cacheDir.listFiles { f -> f.name.startsWith("stage_") }?.forEach { it.delete() } }
+        onDispose {
+            ctx.cacheDir.listFiles { f -> f.name.startsWith("stage_") }?.forEach { it.delete() }
+            for (id in watched) VideoCache.forget(ctx, "/candy/media?id=" + Uri.encode(id) + "&video=1")
+        }
     }
 
     val g = group
@@ -137,12 +141,10 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
         bmp = null
-        videoPath = null
         if (current.kind == "video") {
+            // the video itself plays while it downloads (see CandyVideo below); here only the cover picture
+            if (current.id !in watched) watched.add(current.id)
             bmp = MediaCache.load(net.token, current.id, true)
-            val dest = File(ctx.cacheDir, "stage_${current.id}.mp4")
-            val ok = CandyApi.download("/candy/media?id=" + Uri.encode(current.id) + "&video=1", net.token, dest, STAGE_VIDEO_MAX)
-            if (ok) videoPath = dest.absolutePath else error = ctx.getString(R.string.err_generic)
         } else {
             bmp = MediaCache.load(net.token, current.id, false)
         }
@@ -159,24 +161,26 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val shown = bmp
-            val path = videoPath
-            if (item != null && item.kind == "video" && path != null) {
-                AndroidView(
-                    factory = { c -> VideoView(c) },
-                    update = { v ->
-                        if (v.tag != path) {
-                            v.tag = path
-                            v.setVideoPath(path)
-                            v.setOnPreparedListener { mp -> mp.isLooping = false; v.start() }
-                            v.setOnCompletionListener { next() }
-                        } else if (paused) {
-                            v.pause()
-                        } else if (!v.isPlaying) {
-                            v.start()
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+            if (item != null && item.kind == "video") {
+                if (shown != null) {
+                    Image(
+                        bitmap = shown.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                key(item.id) {
+                    CandyVideo(
+                        net = net,
+                        path = "/candy/media?id=" + Uri.encode(item.id) + "&video=1",
+                        playing = !paused,
+                        loop = false,
+                        onEnded = { next() },
+                        onFailed = { error = ctx.getString(R.string.err_generic) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             } else if (shown != null) {
                 Image(
                     bitmap = shown.asImageBitmap(),

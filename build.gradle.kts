@@ -35,8 +35,8 @@ android {
         applicationId = "com.candy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.18"
+        versionCode = 19
+        versionName = "1.19"
         // Where the app looks for newer versions. The build passes it in (-PupdateRepo=owner/name).
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: ""}\"")
         // Public address of the Kanade bot (the tunnel), one line in api-url.txt at the repo root.
@@ -54,6 +54,17 @@ android {
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
             }
+        }
+    }
+
+    // The release build is the one people install: smaller and noticeably smoother than the debug one (Compose is much slower
+    // when it is not optimized). It is signed with the same fixed key as before, so it installs over the previous version.
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -86,4 +97,7 @@ dependencies {
     // notifications for new messages
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging")
+    // video that plays while it downloads, with a cache on the phone (loops and stories)
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
 }

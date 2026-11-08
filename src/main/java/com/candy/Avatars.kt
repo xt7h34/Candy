@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
@@ -57,7 +58,18 @@ object AvatarCache {
     private val mem = LruCache<String, Bitmap>(80)
     private val missing = HashSet<String>()
 
+    // Photos are also kept on the phone. One that is under an hour old is used as it is; an older one is checked with the bot
+    // first (it answers "unchanged" without sending the photo again), and is used as it is when the bot cannot be reached.
+    private const val FRESH_MS = 60L * 60 * 1000
+    @Volatile private var dir: File? = null
+
+    fun init(c: Context) {
+        dir = File(c.applicationContext.cacheDir, "avatars").apply { mkdirs() }
+    }
+
     private fun key(hash: String) = bareHash(hash).lowercase()
+
+    private fun fileOf(k: String): File? = dir?.let { File(it, k.replace(Regex("[^A-Za-z0-9._-]"), "_")) }
 
     suspend fun load(token: String, hash: String): Bitmap? {
         val k = key(hash)
@@ -65,16 +77,51 @@ object AvatarCache {
         val cached = mem.get(k)
         if (cached != null) return cached
         if (missing.contains(k)) return null
-        val r = CandyApi.fetchBytes("/avatar?hash=" + Uri.encode(k), token)
+
+        val f = fileOf(k)
+        val tagFile = f?.let { File(it.parentFile, it.name + ".etag") }
+        var onDisk: Bitmap? = null
+        var tag: String? = null
+        if (f != null && f.length() > 0) {
+            onDisk = withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(f.absolutePath) }.getOrNull() }
+            tag = tagFile?.takeIf { it.exists() }?.let { runCatching { it.readText() }.getOrNull() }
+            if (onDisk != null && System.currentTimeMillis() - f.lastModified() < FRESH_MS) {
+                mem.put(k, onDisk)
+                return onDisk
+            }
+        }
+
+        val r = CandyApi.fetchBytes("/avatar?hash=" + Uri.encode(k), token, if (onDisk != null) tag else null)
         val bytes = r.bytes
+        if (r.status == 304 && onDisk != null) {
+            f?.setLastModified(System.currentTimeMillis())
+            mem.put(k, onDisk)
+            return onDisk
+        }
         if (r.status in 200..299 && bytes != null && bytes.isNotEmpty()) {
             val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
             if (bmp != null) {
                 mem.put(k, bmp)
+                if (f != null) {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            f.writeBytes(bytes)
+                            if (r.etag != null) tagFile?.writeText(r.etag) else tagFile?.delete()
+                        }
+                    }
+                }
                 return bmp
             }
         }
-        if (r.status == 404) missing.add(k)
+        if (r.status == 404) {
+            missing.add(k)
+            f?.delete()
+            tagFile?.delete()
+        }
+        if (onDisk != null && r.status == 0) {
+            mem.put(k, onDisk)
+            return onDisk
+        }
         return null
     }
 
@@ -82,11 +129,13 @@ object AvatarCache {
         val k = key(hash)
         mem.remove(k)
         missing.remove(k)
+        fileOf(k)?.let { it.delete(); File(it.parentFile, it.name + ".etag").delete() }
     }
 
     fun clear() {
         mem.evictAll()
         missing.clear()
+        dir?.listFiles()?.forEach { it.delete() }
     }
 }
 

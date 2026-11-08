@@ -92,10 +92,6 @@ fun LoopsScreen(
 
     LaunchedEffect(hash, refreshKey) { load(null) }
 
-    DisposableEffect(Unit) {
-        onDispose { ctx.cacheDir.listFiles { f -> f.name.startsWith("loop_") }?.forEach { it.delete() } }
-    }
-
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (loops.isEmpty()) {
             Column(
@@ -115,15 +111,15 @@ fun LoopsScreen(
             val start = remember { loops.indexOfFirst { it.id == startId }.coerceAtLeast(0) }
             val pager = rememberPagerState(initialPage = start) { loops.size }
 
-            // fetch more near the end, and keep only the videos next to the one on screen
+            // fetch more near the end, and get the beginning of the next two videos ready so they start the moment you swipe
             LaunchedEffect(pager.currentPage, loops.size) {
                 val more = next
                 if (more != null && !loading && pager.currentPage >= loops.size - 2) load(more)
-                val keep = HashSet<String>()
-                for (i in (pager.currentPage - 1)..(pager.currentPage + 1)) {
-                    loops.getOrNull(i)?.let { keep.add("loop_${it.id}.mp4") }
+                for (i in 1..2) {
+                    loops.getOrNull(pager.currentPage + i)?.let {
+                        VideoCache.preload(ctx, net.token, "/candy/media?id=" + Uri.encode(it.id) + "&video=1")
+                    }
                 }
-                ctx.cacheDir.listFiles { f -> f.name.startsWith("loop_") && f.name !in keep }?.forEach { it.delete() }
             }
 
             VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
@@ -156,26 +152,18 @@ private fun LoopPage(
     onOpenComments: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
-    var path by remember(loop.id) { mutableStateOf<String?>(null) }
     var poster by remember(loop.id) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(loop.id) { mutableStateOf(false) }
+    var firstFrame by remember(loop.id) { mutableStateOf(false) }
     var playing by remember(loop.id) { mutableStateOf(true) }
     var sending by remember(loop.id) { mutableStateOf(false) }
+    val videoPath = "/candy/media?id=" + Uri.encode(loop.id) + "&video=1"
 
     LaunchedEffect(loop.id) { poster = MediaCache.load(net.token, loop.id, false) }
 
-    // download the video when it is on screen or next to it
-    LaunchedEffect(loop.id, near) {
-        if (near && path == null && !failed) {
-            val file = loopFile(ctx, loop.id)
-            if (file.exists() && file.length() > 0) {
-                path = file.absolutePath
-            } else if (CandyApi.download("/candy/media?id=" + Uri.encode(loop.id) + "&video=1", net.token, file, LOOP_VIDEO_MAX)) {
-                path = file.absolutePath
-            } else {
-                failed = true
-            }
-        }
+    // a page next to the one on screen (if it is built) gets its video's beginning ready
+    LaunchedEffect(loop.id, near, active) {
+        if (near && !active) VideoCache.preload(ctx, net.token, videoPath)
     }
 
     // count a view when it comes on screen
@@ -193,28 +181,19 @@ private fun LoopPage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        val shownPath = path
-        if (active && shownPath != null) {
-            AndroidView(
-                factory = { c -> VideoView(c) },
-                update = { v ->
-                    if (v.tag != shownPath) {
-                        v.tag = shownPath
-                        v.setVideoPath(shownPath)
-                        v.setOnPreparedListener { mp ->
-                            mp.isLooping = true
-                            if (playing) v.start()
-                        }
-                    } else if (!playing) {
-                        v.pause()
-                    } else if (!v.isPlaying) {
-                        v.start()
-                    }
-                },
+        if (active && !failed) {
+            // plays while it downloads; the cover picture stays under it until the first frame
+            CandyVideo(
+                net = net,
+                path = videoPath,
+                playing = playing,
+                loop = true,
+                onFailed = { failed = true },
+                onFirstFrame = { firstFrame = true },
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (cover == null && shownPath == null && !failed) {
+        if (cover == null && !firstFrame && !failed) {
             CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
 

@@ -19,7 +19,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 // ───────────────────────── Talking to the Kanade bot ─────────────────────────
 
-class ApiResult(val status: Int, val body: JSONObject?) {
+class ApiResult(val status: Int, val body: JSONObject?, val etag: String? = null, val fromCache: Boolean = false) {
     val ok: Boolean get() = status in 200..299
 
     /** The bot's own message when it sent one, otherwise a generic one. */
@@ -41,8 +41,11 @@ object CandyApi {
 
     private val base: String get() = remote ?: LOCAL_BASE
 
+    /** The full address of a bot path, for players that fetch the file themselves. */
+    fun urlOf(path: String): String = base + path
+
     /** GET when [body] is null, POST otherwise. */
-    suspend fun call(path: String, body: JSONObject? = null, token: String? = null): ApiResult =
+    suspend fun call(path: String, body: JSONObject? = null, token: String? = null, ifNoneMatch: String? = null): ApiResult =
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
@@ -55,6 +58,7 @@ object CandyApi {
                 // ngrok shows a warning page to browsers; this tells it the caller is an app.
                 c.setRequestProperty("ngrok-skip-browser-warning", "1")
                 if (token != null) c.setRequestProperty("Authorization", "Bearer $token")
+                if (ifNoneMatch != null && body == null) c.setRequestProperty("If-None-Match", ifNoneMatch)
                 if (body != null) {
                     c.doOutput = true
                     c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -63,7 +67,7 @@ object CandyApi {
                 val code = c.responseCode
                 val stream = if (code in 200..299) c.inputStream else c.errorStream
                 val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                ApiResult(code, runCatching { JSONObject(text) }.getOrNull())
+                ApiResult(code, runCatching { JSONObject(text) }.getOrNull(), c.getHeaderField("ETag"))
             } catch (e: Exception) {
                 ApiResult(0, null)
             } finally {
@@ -132,7 +136,7 @@ object CandyApi {
         }
 
     /** Downloads a file (a profile photo) with the same sign-in token. */
-    suspend fun fetchBytes(path: String, token: String): BytesResult =
+    suspend fun fetchBytes(path: String, token: String, etag: String? = null): BytesResult =
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
@@ -143,6 +147,7 @@ object CandyApi {
                 c.requestMethod = "GET"
                 c.setRequestProperty("ngrok-skip-browser-warning", "1")
                 c.setRequestProperty("Authorization", "Bearer $token")
+                if (etag != null) c.setRequestProperty("If-None-Match", etag)
                 val code = c.responseCode
                 val tooBig = c.contentLength > 3_000_000
                 val bytes = if (code in 200..299 && !tooBig) c.inputStream.use { it.readBytes() } else null
@@ -157,7 +162,32 @@ object CandyApi {
 
 /** The signed-in token with the calls that need it. A 401 means the session ended, so we sign out. */
 class Net(val token: String, private val onExpired: () -> Unit) {
-    suspend fun get(path: String): ApiResult = guard(CandyApi.call(path, null, token))
+    /**
+     * GET. For the pages the bot answers with an ETag (feed, inbox, chats...) the last answer is kept on the phone, encrypted:
+     *  - same data on the bot: it answers "304", we reuse the saved copy (nothing to download);
+     *  - the bot is unreachable: we fall back to the saved copy, so the app still opens and shows the latest it saw.
+     */
+    suspend fun get(path: String): ApiResult {
+        val key = ApiCache.keyOf(token, path)
+        val saved = ApiCache.read(key)
+        val r = CandyApi.call(path, null, token, saved?.etag)
+        if (r.status == 304) {
+            val body = saved?.let { runCatching { JSONObject(it.body) }.getOrNull() }
+            if (body != null) return ApiResult(200, body, saved?.etag, fromCache = true)
+            ApiCache.drop(key)
+            return guard(CandyApi.call(path, null, token))
+        }
+        if (r.ok && r.etag != null && r.body != null) ApiCache.write(key, r.etag, r.body.toString())
+        if (r.status == 0 && saved != null) {
+            val body = runCatching { JSONObject(saved.body) }.getOrNull()
+            if (body != null) return ApiResult(200, body, saved.etag, fromCache = true)
+        }
+        return guard(r)
+    }
+
+    /** The last saved answer for [path], without touching the network. Used to show something the moment a screen opens. */
+    suspend fun peek(path: String): JSONObject? =
+        ApiCache.read(ApiCache.keyOf(token, path))?.let { e -> runCatching { JSONObject(e.body) }.getOrNull() }
 
     suspend fun post(path: String, body: JSONObject = JSONObject()): ApiResult =
         guard(CandyApi.call(path, body, token))

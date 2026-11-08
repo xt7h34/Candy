@@ -71,6 +71,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.max
 
 private const val CAPTION_LIMIT = 500
@@ -84,10 +85,45 @@ object MediaCache {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
 
+    // The pictures of a post never change, so they are also kept on the phone (the oldest go first when it is full).
+    private const val DISK_MAX = 120L * 1024 * 1024
+    @Volatile private var dir: File? = null
+
+    fun init(c: Context) {
+        dir = File(c.applicationContext.cacheDir, "post_media").apply { mkdirs() }
+    }
+
+    private fun fileOf(key: String): File? = dir?.let { File(it, key.replace(Regex("[^A-Za-z0-9._-]"), "_")) }
+
+    private fun trim(d: File) {
+        val files = d.listFiles()?.filter { it.isFile } ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= DISK_MAX) return
+        for (f in files.sortedBy { it.lastModified() }) {
+            if (total <= DISK_MAX * 3 / 4) break
+            total -= f.length()
+            f.delete()
+        }
+    }
+
     suspend fun load(token: String, id: String, thumb: Boolean, index: Int = 0): Bitmap? {
         val key = id + (if (thumb) "t" else "f") + (if (index > 0) "#$index" else "")
         val cached = mem.get(key)
         if (cached != null) return cached
+
+        val file = fileOf(key)
+        if (file != null && file.length() > 0) {
+            val saved = withContext(Dispatchers.IO) {
+                val b = runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+                if (b != null) file.setLastModified(System.currentTimeMillis()) else file.delete()
+                b
+            }
+            if (saved != null) {
+                mem.put(key, saved)
+                return saved
+            }
+        }
+
         val path = "/candy/media?id=" + Uri.encode(id) + (if (thumb) "&thumb=1" else "") + (if (index > 0) "&i=$index" else "")
         val r = CandyApi.fetchBytes(path, token)
         val bytes = r.bytes
@@ -95,13 +131,26 @@ object MediaCache {
             val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
             if (bmp != null) {
                 mem.put(key, bmp)
+                if (file != null) {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            val tmp = File(file.parentFile, file.name + ".tmp")
+                            tmp.writeBytes(bytes)
+                            if (!tmp.renameTo(file)) tmp.delete()
+                            if (Math.random() < 0.05) file.parentFile?.let { trim(it) }
+                        }
+                    }
+                }
                 return bmp
             }
         }
         return null
     }
 
-    fun clear() = mem.evictAll()
+    fun clear() {
+        mem.evictAll()
+        dir?.listFiles()?.forEach { it.delete() }
+    }
 }
 
 /** A post picture that keeps its place while it loads. [thumb] is the small square one used in grids. */
