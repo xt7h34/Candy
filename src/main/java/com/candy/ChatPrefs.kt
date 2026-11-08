@@ -1,6 +1,7 @@
 package com.candy
 
 import androidx.compose.material3.Switch
+import androidx.core.app.NotificationManagerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -42,6 +43,10 @@ object ChatPrefs {
     /** "text": the words under the name. "bubble": three dots at the end of the chat. */
     fun typingStyle(c: Context): String = if (sp(c).getString("typing", "text") == "bubble") "bubble" else "text"
     fun setTypingStyle(c: Context, v: String) = sp(c).edit().putString("typing", v).apply()
+
+    /** Where the little eye (the other person read my last message) shows: "list" at the end of the chat's row in the inbox, or "chat" under the message. */
+    fun seenPlace(c: Context): String = if (sp(c).getString("seen_place", "list") == "chat") "chat" else "list"
+    fun setSeenPlace(c: Context, v: String) = sp(c).edit().putString("seen_place", v).apply()
 }
 
 @Composable
@@ -78,6 +83,10 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     }
     var menu by remember { mutableStateOf(ChatPrefs.menuStyle(ctx)) }
     var typing by remember { mutableStateOf(ChatPrefs.typingStyle(ctx)) }
+    var seenPlace by remember { mutableStateOf(ChatPrefs.seenPlace(ctx)) }
+    var notifAllowed by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
+    var testState by remember { mutableStateOf("") }
+    var testing by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -120,6 +129,16 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                     )
                 }
                 Spacer(Modifier.padding(top = 8.dp))
+                SectionTitle(stringResource(R.string.msg_seen_place))
+                ChoiceRow(seenPlace == "list", stringResource(R.string.msg_seen_place_list)) {
+                    seenPlace = "list"
+                    ChatPrefs.setSeenPlace(ctx, "list")
+                }
+                ChoiceRow(seenPlace == "chat", stringResource(R.string.msg_seen_place_chat)) {
+                    seenPlace = "chat"
+                    ChatPrefs.setSeenPlace(ctx, "chat")
+                }
+                Spacer(Modifier.padding(top = 8.dp))
                 SectionTitle(stringResource(R.string.msg_push_title))
                 Row(
                     Modifier.fillMaxWidth(),
@@ -156,6 +175,33 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                 } else if (!pushReady) {
                     Muted(stringResource(R.string.msg_push_server_off))
                 }
+                if (!notifAllowed) {
+                    Muted(stringResource(R.string.msg_push_blocked))
+                    TextButton(onClick = { Push.openSystemSettings(ctx) }) { Text(stringResource(R.string.msg_push_open_settings)) }
+                }
+                // a real test: the bot sends a notification to this phone and says exactly what went wrong if it cannot
+                TextButton(
+                    enabled = !testing,
+                    onClick = {
+                        testing = true
+                        testState = ""
+                        scope.launch {
+                            Push.register(ctx, net)
+                            val r = net.post("/candy/push/test")
+                            val b = r.body
+                            testState = when {
+                                !r.ok || b == null -> r.message(ctx)
+                                b.optBoolean("ok") -> ctx.getString(R.string.msg_push_test_ok, b.optInt("delivered"))
+                                b.optString("reason") == "no_key" -> ctx.getString(R.string.msg_push_test_nokey)
+                                b.optString("reason") == "no_device" -> ctx.getString(R.string.msg_push_test_nodevice)
+                                else -> ctx.getString(R.string.msg_push_test_failed, b.optString("error"), b.optString("project"))
+                            }
+                            notifAllowed = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+                            testing = false
+                        }
+                    },
+                ) { Text(stringResource(R.string.msg_push_test)) }
+                if (testState.isNotEmpty()) Muted(testState)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },

@@ -347,4 +347,19 @@
     <string name="cs_notifications">الإشعارات</string>
     <string name="cs_notif_on">شغالة</string>
     <string name="cs_notif_off">مكتومة</string>
+    <string name="msg_seen_place">مكان علامة المشاهدة 👁</string>
+    <string name="msg_seen_place_list">في قايمة المحادثات (آخر السطر)</string>
+    <string name="msg_seen_place_chat">جوا المحادثة (تحت الرسالة)</string>
+    <string name="push_test_title">الإشعارات شغالة ✅</string>
+    <string name="push_test_text">ده إشعار تجريبي من كاندي</string>
+    <string name="msg_push_blocked">إشعارات التطبيق مقفولة من إعدادات الموبايل</string>
+    <string name="msg_push_open_settings">افتح إعدادات الإشعارات</string>
+    <string name="msg_push_test">إشعار تجريبي</string>
+    <string name="msg_push_test_ok">اتبعت لـ %1$d جهاز ✅ لو ماوصلش: شيل التطبيق من توفير البطارية وافتح إعدادات الإشعارات</string>
+    <string name="msg_push_test_nokey">البوت مش لاقي مفتاح Firebase (google-key2.json)</string>
+    <string name="msg_push_test_nodevice">جهازك مش متسجل عند البوت. اتأكد من النت وجرب تاني</string>
+    <string name="msg_push_test_failed">جوجل رفضت الإرسال (%1$s). اتأكد إن مفتاح google-key2.json من نفس مشروع التطبيق: %2$s</string>
+    <string name="chat_kind_image">صورة</string>
+    <string name="chat_image_ready">الصورة جاهزة. اكتب تعليق لو عايز وابعت</string>
+    <string name="chat_image_failed">معرفتش أجهّز الصورة، جرّب صورة تانية</string>
 </resources>

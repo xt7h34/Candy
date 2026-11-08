@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
         ApiCache.init(this)
         MediaCache.init(this)
         AvatarCache.init(this)
+        ChatImageCache.init(this)
         setContent {
             CandyTheme {
                 CandyRoot(
@@ -130,6 +132,7 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
             AvatarCache.clear()
             ApiCache.clear()
             VideoCache.clear(ctx)
+            ChatImageCache.clear()
             MediaCache.clear()
             StickerCache.clear()
             session = signedIn
@@ -159,6 +162,7 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
                 AvatarCache.clear()
                 ApiCache.clear()
                 VideoCache.clear(ctx)
+                ChatImageCache.clear()
                 MediaCache.clear()
                 StickerCache.clear()
                 session = null
@@ -177,6 +181,7 @@ fun CandyRoot(handoff: String?, openChat: String?, onChatOpened: () -> Unit, onH
                     AvatarCache.clear()
                     ApiCache.clear()
                     VideoCache.clear(ctx)
+                    ChatImageCache.clear()
                     MediaCache.clear()
                     StickerCache.clear()
                     session = null
@@ -247,7 +252,14 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                 notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-        Push.register(pushCtx, net)
+        // tell the bot where to send notifications; if the bot cannot be reached right now, try again a few times
+        if (Push.firebaseReady(pushCtx)) {
+            var tries = 0
+            while (!Push.register(pushCtx, net) && tries < 4) {
+                tries++
+                delay(15_000L * tries)
+            }
+        }
     }
 
     LaunchedEffect(refreshTick, tab, stack.size) {

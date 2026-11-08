@@ -347,4 +347,19 @@
     <string name="cs_notifications">Notifications</string>
     <string name="cs_notif_on">On</string>
     <string name="cs_notif_off">Muted</string>
+    <string name="msg_seen_place">Where the seen mark 👁 shows</string>
+    <string name="msg_seen_place_list">In the chat list (end of the row)</string>
+    <string name="msg_seen_place_chat">Inside the chat (under the message)</string>
+    <string name="push_test_title">Notifications work ✅</string>
+    <string name="push_test_text">This is a test notification from Candy</string>
+    <string name="msg_push_blocked">Notifications for the app are off in the phone settings</string>
+    <string name="msg_push_open_settings">Open notification settings</string>
+    <string name="msg_push_test">Test notification</string>
+    <string name="msg_push_test_ok">Sent to %1$d device(s) ✅ If it does not show up: take the app out of battery saving and check the notification settings</string>
+    <string name="msg_push_test_nokey">The bot cannot find the Firebase key (google-key2.json)</string>
+    <string name="msg_push_test_nodevice">Your phone is not registered with the bot. Check your connection and try again</string>
+    <string name="msg_push_test_failed">Google refused to send (%1$s). Make sure google-key2.json is from the same project as the app: %2$s</string>
+    <string name="chat_kind_image">Photo</string>
+    <string name="chat_image_ready">Photo ready. Add a caption if you like, then send</string>
+    <string name="chat_image_failed">Could not prepare the photo, try another one</string>
 </resources>

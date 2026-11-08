@@ -51,6 +51,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Spacer
 import android.net.Uri
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -134,6 +138,9 @@ private data class ChatMsg(
     val sys: String?,
     val sysValue: String,
     val voiceMs: Long?,
+    val hasImage: Boolean = false,
+    val imageW: Int = 0,
+    val imageH: Int = 0,
 )
 
 /** A pinned message: which one, until when, and whether I pinned it. */
@@ -153,6 +160,7 @@ private val MORE_REACTIONS = listOf(
 private fun msgPreview(m: ChatMsg): String = when {
     m.stickerId != null -> "😊"
     m.voiceMs != null -> "🎤"
+    m.hasImage -> "📷" + (if (m.text.isNotEmpty()) " " + m.text else "")
     m.text.isNotEmpty() -> m.text
     m.trackId != null -> "🖼️"
     m.loopId != null -> "🎬"
@@ -160,7 +168,7 @@ private fun msgPreview(m: ChatMsg): String = when {
 }
 
 private fun canEdit(m: ChatMsg): Boolean =
-    m.mine && !m.deleted && m.stickerId == null && m.text.isNotEmpty() && System.currentTimeMillis() - m.at <= EDIT_WINDOW_MS
+    m.mine && !m.deleted && m.stickerId == null && !m.hasImage && m.text.isNotEmpty() && System.currentTimeMillis() - m.at <= EDIT_WINDOW_MS
 
 private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else optString(key).ifEmpty { null }
 
@@ -199,6 +207,9 @@ private fun JSONObject.toChatMsg(): ChatMsg {
         sys = nullableString("sys"),
         sysValue = optString("value"),
         voiceMs = optJSONObject("voice")?.optLong("ms"),
+        hasImage = optJSONObject("image") != null,
+        imageW = optJSONObject("image")?.optInt("w") ?: 0,
+        imageH = optJSONObject("image")?.optInt("h") ?: 0,
     )
 }
 
@@ -382,6 +393,7 @@ fun ChatsScreen(
         if (!loading && error.isEmpty() && threads.isEmpty()) {
             item { Muted(stringResource(R.string.chats_empty), Modifier.padding(vertical = 16.dp)) }
         }
+        val seenInList = ChatPrefs.seenPlace(ctx) == "list"
         items(threads) { t ->
             Card(Modifier.fillMaxWidth().clickable { onOpenChat(t.hash) }) {
                 Row(
@@ -399,9 +411,10 @@ fun ChatsScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            (if (t.lastSeen) "👁 " else "") + when {
+                            when {
                                 t.lastDeleted -> stringResource(R.string.chat_last_deleted)
                                 t.lastKind == "sys" -> "⚙️"
+                                t.lastKind == "image" -> "📷" + (if (t.lastText.isNotEmpty()) " " + t.lastText else "")
                                 t.lastText.isNotEmpty() -> t.lastText
                                 t.lastKind == "voice" -> "🎤"
                                 t.lastKind == "sticker" -> "😊"
@@ -419,6 +432,9 @@ fun ChatsScreen(
                         Box(
                             Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary).padding(horizontal = 8.dp, vertical = 2.dp),
                         ) { Text(t.unread.toString(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall) }
+                    } else if (t.lastSeen && seenInList) {
+                        // the other person read my last message (it never shows together with the unread count: that one is about their messages)
+                        Text("👁", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -434,6 +450,7 @@ private fun QuoteBlock(m: ChatMsg, who: String, textColor: Color) {
         "loop" -> "🎬 " + stringResource(R.string.chat_kind_loop)
         "track" -> "🖼️ " + stringResource(R.string.chat_kind_track)
         "voice" -> "🎤 " + stringResource(R.string.chat_kind_voice)
+        "image" -> "📷 " + stringResource(R.string.chat_kind_image)
         else -> m.replyText
     }
     Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x22000000)).padding(6.dp)) {
@@ -481,6 +498,9 @@ fun ChatScreen(
     var selected by remember { mutableStateOf<ChatMsg?>(null) }
     var forwarding by remember { mutableStateOf<ChatMsg?>(null) }
     var stickerMsg by remember { mutableStateOf<ChatMsg?>(null) }
+    var imageMsg by remember { mutableStateOf<ChatMsg?>(null) }              // picture open full screen
+    var pendingImage by remember { mutableStateOf<Uri?>(null) }              // picked from the gallery, not sent yet
+    var pendingPreview by remember { mutableStateOf<Bitmap?>(null) }
     var textSelectN by remember { mutableStateOf(-1) }
     val pins = remember { mutableStateListOf<PinInfo>() }
     var pinIdx by remember { mutableStateOf(0) }
@@ -699,6 +719,18 @@ fun ChatScreen(
         }
     }
 
+    // ───── pictures ─────
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            pendingImage = uri
+            editing = null
+        }
+    }
+    LaunchedEffect(pendingImage) {
+        val picked = pendingImage
+        pendingPreview = if (picked == null) null else withContext(Dispatchers.IO) { ChatImagePreview.load(ctx, picked) }
+    }
+
     // ───── voice messages ─────
     fun startRecording() {
         if (recorder.start()) {
@@ -826,7 +858,7 @@ fun ChatScreen(
                     replaceMsg(
                         m.copy(
                             text = "", deleted = true, loopId = null, stickerId = null, trackId = null,
-                            replyN = 0, myReaction = null, theirReaction = null, edited = false, voiceMs = null,
+                            replyN = 0, myReaction = null, theirReaction = null, edited = false, voiceMs = null, hasImage = false,
                         ),
                     )
                 }
@@ -883,7 +915,55 @@ fun ChatScreen(
         }
     }
 
+    // a picture from the gallery: it is shrunk on the phone, uploaded, then sent as a message (the text box becomes its caption)
+    fun sendPicture(uri: Uri) {
+        if (busy) return
+        val caption = input.trim()
+        val quoted = replyTo
+        scope.launch {
+            busy = true
+            error = ""
+            val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, uri) }
+            if (bytes == null) {
+                busy = false
+                error = ctx.getString(R.string.chat_image_failed)
+                return@launch
+            }
+            val up = net.post("/candy/dm/image/upload", JSONObject().put("image", Base64.encodeToString(bytes, Base64.NO_WRAP)))
+            val imageId = up.body?.optString("id").orEmpty()
+            if (!up.ok || imageId.isEmpty()) {
+                busy = false
+                error = up.message(ctx)
+                return@launch
+            }
+            val body = JSONObject().put("hash", bareHash(hash)).put("text", caption).put("image", JSONObject().put("id", imageId))
+            if (quoted != null) body.put("reply", quoted.n)
+            val r = net.post("/candy/dm/send", body)
+            busy = false
+            if (r.ok) {
+                pendingImage = null
+                input = ""
+                replyTo = null
+                val m = r.body?.optJSONObject("message")?.toChatMsg()
+                if (m != null && messages.none { it.n == m.n }) {
+                    messages.add(m)
+                    latest = maxOf(latest, m.n)
+                }
+                canSend = r.body?.optBoolean("canSend", true) ?: true
+                remaining = if (r.body != null && !r.body.isNull("remaining")) r.body.optInt("remaining") else null
+            } else {
+                error = r.message(ctx)
+                if (r.status == 403) canSend = false
+            }
+        }
+    }
+
     fun send(sticker: String? = null) {
+        val picked = pendingImage
+        if (picked != null && sticker == null && editing == null) {
+            sendPicture(picked)
+            return
+        }
         // editing a message of mine: the same box, but it changes the old message instead of sending a new one
         val editTarget = editing
         if (editTarget != null && sticker == null) {
@@ -993,7 +1073,7 @@ fun ChatScreen(
                         TextButton(onClick = { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty()) {
                             Text("📋", style = MaterialTheme.typography.titleLarge)
                         }
-                        TextButton(onClick = { forwarding = sel; selected = null }, enabled = sel.voiceMs == null) {
+                        TextButton(onClick = { forwarding = sel; selected = null }, enabled = sel.voiceMs == null && !sel.hasImage) {
                             Text("↪", style = MaterialTheme.typography.titleLarge)
                         }
                         TextButton(onClick = { deleting = sel; selected = null }) { Text("🗑", style = MaterialTheme.typography.titleLarge) }
@@ -1144,7 +1224,8 @@ fun ChatScreen(
             SearchResults(hits, shownName, { n -> jumpTo(n) }, Modifier.weight(1f).fillMaxWidth())
         } else {
         // my last message the other person has read gets the little eye
-        val lastSeenN = seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n <= up }?.n }
+        val lastSeenN = if (ChatPrefs.seenPlace(ctx) != "chat") null
+        else seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n <= up }?.n }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
@@ -1277,6 +1358,17 @@ fun ChatScreen(
                                 }
                                 val vms = m.voiceMs
                                 if (vms != null) VoiceBubble(net, peerHash, m.n, vms, textColor)
+                                if (m.hasImage) {
+                                    ChatImage(
+                                        net = net,
+                                        peerHash = peerHash,
+                                        n = m.n,
+                                        w = m.imageW,
+                                        h = m.imageH,
+                                        onClick = { imageMsg = m },
+                                        onLongClick = { selected = m },
+                                    )
+                                }
                                 if (m.text.isNotEmpty()) {
                                     if (textSelectN == m.n) {
                                         SelectionContainer { Text(m.text, color = textColor) }
@@ -1315,7 +1407,7 @@ fun ChatScreen(
                                 onClick = { textSelectN = m.n; selected = null },
                             )
                         }
-                        if (m.voiceMs == null) {
+                        if (m.voiceMs == null && !m.hasImage) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.msg_action_forward)) },
                                 onClick = { forwarding = m; selected = null },
@@ -1402,7 +1494,7 @@ fun ChatScreen(
                     ) {
                         Muted(
                             stringResource(R.string.chat_replying, if (quoted.mine) stringResource(R.string.nav_me) else shownName) + ": " +
-                                (if (quoted.stickerId != null) "😊" else if (quoted.loopId != null) "🎬" else quoted.text.take(40)),
+                                (if (quoted.stickerId != null) "😊" else if (quoted.loopId != null) "🎬" else if (quoted.hasImage) "📷 " + quoted.text.take(30) else quoted.text.take(40)),
                             Modifier.weight(1f),
                         )
                         TextButton(onClick = { replyTo = null }) { Text("✕") }
@@ -1428,6 +1520,22 @@ fun ChatScreen(
                         onSend = { sendVoice() },
                     )
                 } else {
+                if (pendingImage != null) {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val preview = pendingPreview
+                        if (preview != null) {
+                            Image(
+                                bitmap = preview.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Muted(stringResource(R.string.chat_image_ready), Modifier.weight(1f))
+                        TextButton(onClick = { pendingImage = null }) { Text("✕") }
+                    }
+                }
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         shape = RoundedCornerShape(26.dp),
@@ -1449,11 +1557,12 @@ fun ChatScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
+                            TextButton(onClick = { pickImage.launch("image/*") }) { Text("🖼️", style = MaterialTheme.typography.titleLarge) }
                             TextButton(onClick = { onFlare(peerHash) }) { Text("📸", style = MaterialTheme.typography.titleLarge) }
                         }
                     }
-                    val canPost = !busy && input.isNotBlank()
-                    val showMic = input.isBlank() && editing == null
+                    val canPost = !busy && (input.isNotBlank() || pendingImage != null)
+                    val showMic = input.isBlank() && editing == null && pendingImage == null
                     Surface(
                         shape = CircleShape,
                         color = if (canPost || showMic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1533,6 +1642,9 @@ fun ChatScreen(
         EmojiPickerDialog(onPick = { e -> react(emojiTarget, e); emojiMore = null }, onDismiss = { emojiMore = null })
     }
 
+
+    val viewing = imageMsg
+    if (viewing != null) ImageViewer(net, peerHash, viewing.n) { imageMsg = null }
 
     val sm = stickerMsg
     val smSticker = sm?.stickerId

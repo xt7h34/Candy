@@ -59,10 +59,40 @@ object Push {
     }
 
     /** Tells the bot this phone's address, so it can send notifications here. Safe to call any time. */
-    suspend fun register(ctx: Context, net: Net) {
-        if (!firebaseReady(ctx)) return
-        val token = currentToken() ?: return
-        net.post("/candy/push/register", JSONObject().put("token", token))
+    suspend fun register(ctx: Context, net: Net): Boolean {
+        if (!firebaseReady(ctx)) return false
+        val token = currentToken() ?: return false
+        return net.post("/candy/push/register", JSONObject().put("token", token)).ok
+    }
+
+    /** The phone's own notification settings for this app (where the person can switch them back on). */
+    fun openSystemSettings(ctx: Context) {
+        try {
+            ctx.startActivity(
+                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            // no settings screen to open
+        }
+    }
+
+    private fun showTest(ctx: Context) {
+        if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
+        ensureChannel(ctx)
+        val note = NotificationCompat.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(ctx.getString(R.string.push_test_title))
+            .setContentText(ctx.getString(R.string.push_test_text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(7, note)
+        } catch (e: SecurityException) {
+            // notifications are not allowed on this phone
+        }
     }
 
     /** On sign out: this phone stops getting this account's notifications. */
@@ -73,6 +103,10 @@ object Push {
     }
 
     fun show(ctx: Context, data: Map<String, String>) {
+        if (data["type"] == "test") {
+            showTest(ctx)
+            return
+        }
         if (data["type"] != "dm") return
         val hash = bareHash(data["hash"].orEmpty())
         if (hash.isEmpty()) return
