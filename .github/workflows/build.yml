@@ -31,19 +31,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
+      - name: Build release APK
         # -PupdateRepo tells the app which repository to look at for newer versions.
-        run: gradle assembleDebug -Pandroid.useAndroidX=true -PupdateRepo=${{ github.repository }} --no-daemon
+        # The release build is optimized (R8) and signed with the same fixed key, so it installs over older versions.
+        run: gradle assembleRelease -Pandroid.useAndroidX=true -PupdateRepo=${{ github.repository }} --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: build/outputs/apk/debug/*.apk
+          name: app-release
+          path: build/outputs/apk/release/*.apk
       - name: Read the version
         id: ver
         run: |
           echo "code=$(grep -oP 'versionCode = \K[0-9]+' build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
           echo "name=$(grep -oP 'versionName = "\K[^"]+' build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
-          APK=$(ls build/outputs/apk/debug/*.apk | head -1)
+          APK=$(ls build/outputs/apk/release/*.apk | head -1)
           cp "$APK" "Candy-$(grep -oP 'versionName = "\K[^"]+' build.gradle.kts | head -1).apk"
       - name: Publish a release for the app to find
         uses: softprops/action-gh-release@v2
