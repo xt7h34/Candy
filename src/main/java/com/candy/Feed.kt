@@ -1,5 +1,9 @@
 package com.candy
 
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +56,7 @@ import org.json.JSONObject
 
 private const val DRIFT_LIMIT = 210
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     net: Net,
@@ -125,68 +130,73 @@ fun FeedScreen(
         loading = false
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = LocalBarInset.current),
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    PullToRefreshBox(
+        isRefreshing = loading && (posts.isNotEmpty() || drifts.isNotEmpty()),
+        onRefresh = { reload++ },
     ) {
-        item {
-            // the + is always at the top left, even in Arabic: it opens the camera
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .clickable { onOpenCamera() },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
-                    Text(
-                        stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    TextButton(onClick = { reload++ }) { Text(stringResource(R.string.refresh)) }
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onNewPost, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.feed_new_post))
-                }
-                OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.feed_new))
-                }
-            }
-        }
-        if (stories.isNotEmpty()) item { StoriesRow(net.token, stories, onOpenStory) }
-        item { ErrorText(error) }
-        if (drifts.isNotEmpty()) {
-            item { SectionTitle(stringResource(R.string.feed_title)) }
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = LocalBarInset.current),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(drifts) { DriftChip(it, net.token, onOpen) }
+                // the + is always at the top left, even in Arabic: it opens the camera
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .clickable { onOpenCamera() },
+                            contentAlignment = Alignment.Center,
+                        ) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
+                        Text(
+                            stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(onClick = { reload++ }) { Text(stringResource(R.string.refresh)) }
+                    }
                 }
             }
-        }
-        items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
-        val more = next
-        if (more != null) {
             item {
-                TextButton(onClick = { scope.launch { loadPosts(more) } }) { Text(stringResource(R.string.load_more)) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onNewPost, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.feed_new_post))
+                    }
+                    OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.feed_new))
+                    }
+                }
             }
+            if (stories.isNotEmpty()) item { StoriesRow(net.token, stories, onOpenStory) }
+            item { ErrorText(error) }
+            if (drifts.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.feed_title)) }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(drifts) { DriftChip(it, net.token, onOpen) }
+                    }
+                }
+            }
+            items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
+            val more = next
+            if (more != null) {
+                item {
+                    TextButton(onClick = { scope.launch { loadPosts(more) } }) { Text(stringResource(R.string.load_more)) }
+                }
+            }
+            if (loading && posts.isEmpty() && drifts.isEmpty()) item { SkeletonCards(3) }
+            if (!loading && error.isEmpty() && posts.isEmpty() && drifts.isEmpty()) {
+                item { Muted(stringResource(R.string.feed_empty), Modifier.padding(vertical = 16.dp)) }
+            }
+            item { Column(Modifier.padding(bottom = 16.dp)) {} }
         }
-        if (loading && posts.isEmpty() && drifts.isEmpty()) item { Loading() }
-        if (!loading && error.isEmpty() && posts.isEmpty() && drifts.isEmpty()) {
-            item { Muted(stringResource(R.string.feed_empty), Modifier.padding(vertical = 16.dp)) }
-        }
-        item { Column(Modifier.padding(bottom = 16.dp)) {} }
     }
 
     if (composing) {
@@ -291,7 +301,7 @@ fun DriftComposer(net: Net, onDismiss: () -> Unit, onPosted: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.prof_post_drift)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Field(
                     stringResource(R.string.prof_drift_hint), text, { text = it.take(DRIFT_LIMIT) },
                     singleLine = false,

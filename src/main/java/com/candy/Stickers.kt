@@ -1,5 +1,13 @@
 package com.candy
 
+import java.nio.ByteBuffer
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
+import android.os.Build
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.ImageDecoder
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
@@ -50,32 +58,88 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-private const val STICKER_MAX_BYTES = 400 * 1024
+private const val STICKER_MAX_BYTES = 400 * 1024                 // a still sticker
+private const val STICKER_ANIMATED_MAX_BYTES = 1024 * 1024        // an animated one (WhatsApp stops at 500 KB; GIFs are bigger)
 
 /** Stickers kept in memory while the app is open. */
 object StickerCache {
     private val mem = LruCache<String, Bitmap>(60)
 
-    suspend fun load(token: String, id: String): Bitmap? {
-        val cached = mem.get(id)
-        if (cached != null) return cached
+    // the files themselves, kept for animated stickers (a few MB at most)
+    private val files = object : LruCache<String, ByteArray>(6 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ByteArray): Int = value.size
+    }
+
+    /** An animated WebP (the animation flag in its header) or a GIF. The bot does the same check. */
+    fun looksAnimated(b: ByteArray): Boolean {
+        if (b.size < 21) return false
+        if (b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte()) return true
+        val riff = b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte() && b[3] == 'F'.code.toByte()
+        val webp = b[8] == 'W'.code.toByte() && b[9] == 'E'.code.toByte() && b[10] == 'B'.code.toByte() && b[11] == 'P'.code.toByte()
+        val vp8x = b[12] == 'V'.code.toByte() && b[13] == 'P'.code.toByte() && b[14] == '8'.code.toByte() && b[15] == 'X'.code.toByte()
+        return riff && webp && vp8x && (b[20].toInt() and 0x02) != 0
+    }
+
+    /** The sticker file as the bot has it (animated if it is). */
+    suspend fun bytes(token: String, id: String): ByteArray? {
+        files.get(id)?.let { return it }
         val r = CandyApi.fetchBytes("/candy/sticker?id=" + Uri.encode(id), token)
-        val bytes = r.bytes
-        if (r.status in 200..299 && bytes != null && bytes.isNotEmpty()) {
+        val b = r.bytes
+        if (r.status in 200..299 && b != null && b.isNotEmpty()) {
+            files.put(id, b)
+            return b
+        }
+        return null
+    }
+
+    /**
+     * A still picture of the sticker. [still] asks the bot for the first frame only, which is small: that is what lists show,
+     * so a screen of animated stickers does not download and play them all.
+     */
+    suspend fun load(token: String, id: String, still: Boolean = false): Bitmap? {
+        val key = if (still) "$id|s" else id
+        val cached = mem.get(key)
+        if (cached != null) return cached
+        val bytes = if (still) {
+            val r = CandyApi.fetchBytes("/candy/sticker?id=" + Uri.encode(id) + "&still=1", token)
+            if (r.status in 200..299) r.bytes else null
+        } else {
+            bytes(token, id)
+        }
+        if (bytes != null && bytes.isNotEmpty()) {
             val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
             if (bmp != null) {
-                mem.put(id, bmp)
+                mem.put(key, bmp)
                 return bmp
             }
         }
         return null
     }
 
-    fun forget(id: String) {
-        mem.remove(id)
+    /** The moving picture, when the sticker is animated and the phone can play it (Android 9+); otherwise null. */
+    suspend fun animated(token: String, id: String): Drawable? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        val bytes = bytes(token, id) ?: return null
+        if (!looksAnimated(bytes)) return null
+        return withContext(Dispatchers.Default) {
+            try {
+                ImageDecoder.decodeDrawable(ImageDecoder.createSource(ByteBuffer.wrap(bytes)))
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
-    fun clear() = mem.evictAll()
+    fun forget(id: String) {
+        mem.remove(id)
+        mem.remove("$id|s")
+        files.remove(id)
+    }
+
+    fun clear() {
+        mem.evictAll()
+        files.evictAll()
+    }
 }
 
 /** A pack of stickers you made, and what the sticker lists from the server look like. */
@@ -123,14 +187,52 @@ private fun StickerTab(label: String, selected: Boolean, onClick: () -> Unit) {
 
 /** A sticker, with no frame around it. */
 @Composable
-fun StickerImage(id: String, token: String, size: Dp, modifier: Modifier = Modifier) {
-    var bmp by remember(id) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(id) { bmp = StickerCache.load(token, id) }
+fun StickerImage(id: String, token: String, size: Dp, modifier: Modifier = Modifier, animate: Boolean = true) {
+    var bmp by remember(id, animate) { mutableStateOf<Bitmap?>(null) }
+    var moving by remember(id, animate) { mutableStateOf<Drawable?>(null) }
+    LaunchedEffect(id, animate) {
+        if (animate) {
+            val d = StickerCache.animated(token, id)
+            if (d != null) {
+                moving = d
+                return@LaunchedEffect
+            }
+        }
+        bmp = StickerCache.load(token, id, still = !animate)
+    }
     Box(modifier.size(size)) {
+        val d = moving
         val b = bmp
-        if (b != null) {
+        if (d != null) {
+            MovingSticker(d, size)
+        } else if (b != null) {
             Image(bitmap = b.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
         }
+    }
+}
+
+/** An animated sticker: plays in a loop while it is on screen and stops when it leaves. */
+@Composable
+private fun MovingSticker(drawable: Drawable, size: Dp) {
+    DisposableEffect(drawable) {
+        playLoop(drawable, true)
+        onDispose { playLoop(drawable, false) }
+    }
+    AndroidView(
+        factory = { c -> ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setImageDrawable(drawable) } },
+        update = { v -> if (v.drawable !== drawable) v.setImageDrawable(drawable) },
+        modifier = Modifier.size(size),
+    )
+}
+
+private fun playLoop(d: Drawable, on: Boolean) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+    val a = d as? AnimatedImageDrawable ?: return
+    if (on) {
+        a.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+        a.start()
+    } else {
+        a.stop()
     }
 }
 
@@ -182,7 +284,8 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
                             null
                         }
                     }
-                    if (bytes == null || bytes.isEmpty() || bytes.size > STICKER_MAX_BYTES) continue
+                    if (bytes == null || bytes.isEmpty()) continue
+                    if (bytes.size > (if (StickerCache.looksAnimated(bytes)) STICKER_ANIMATED_MAX_BYTES else STICKER_MAX_BYTES)) continue
                     val body = JSONObject().put("sticker", true).put("image", Base64.encodeToString(bytes, Base64.NO_WRAP))
                     val r = net.post("/candy/post", body)
                     if (r.ok) {
@@ -257,7 +360,7 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
                                         }
                                     },
                                 contentAlignment = Alignment.Center,
-                            ) { StickerImage(id, net.token, 64.dp) }
+                            ) { StickerImage(id, net.token, 64.dp, animate = false) }
                         }
                         for (i in row.size until 4) Spacer(Modifier.weight(1f))
                     }
@@ -265,7 +368,7 @@ fun StickerPicker(net: Net, onPick: (String) -> Unit, onDismiss: () -> Unit) {
                 if (notice.isNotEmpty()) Text(notice, color = MaterialTheme.colorScheme.primary)
                 ErrorText(error)
                 OutlinedButton(
-                    onClick = { importer.launch(arrayOf("image/webp", "image/png")) },
+                    onClick = { importer.launch(arrayOf("image/webp", "image/png", "image/gif")) },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.stk_import)) }
@@ -369,7 +472,7 @@ fun StickerSheetActions(net: Net, id: String) {
             onDismissRequest = { choosingPack = false },
             title = { Text(stringResource(R.string.stk_pack_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (p in l.packs) {
                         TextButton(onClick = { addTo(p.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                             Text(p.name + "  (" + p.ids.size + ")")

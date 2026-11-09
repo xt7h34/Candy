@@ -1,5 +1,15 @@
 package com.candy
 
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Column
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
 import android.content.Context
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeJoin
@@ -97,6 +107,40 @@ fun SectionTitle(text: String) {
 fun Loading() {
     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+/**
+ * Grey placeholders in the shape of what is loading (a card), pulsing softly. Shown instead of a spinner when there is nothing
+ * to show yet, so the screen looks ready and the real content just fills in.
+ */
+@Composable
+fun SkeletonCards(count: Int = 3, tall: Boolean = true) {
+    val pulse = rememberInfiniteTransition(label = "skeleton")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "skeleton-alpha",
+    )
+    val tone = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(count) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(tone))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.width(120.dp).height(12.dp).clip(RoundedCornerShape(6.dp)).background(tone))
+                        Box(Modifier.width(70.dp).height(10.dp).clip(RoundedCornerShape(5.dp)).background(tone))
+                    }
+                }
+                if (tall) Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)).background(tone))
+                Box(Modifier.fillMaxWidth(0.8f).height(12.dp).clip(RoundedCornerShape(6.dp)).background(tone))
+            }
+        }
     }
 }
 

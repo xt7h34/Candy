@@ -178,7 +178,7 @@ fun MemoriesScreen(onBack: () -> Unit, onUse: (Picked, String) -> Unit) {
             onDismissRequest = { chosen = null },
             title = { Text(stringResource(R.string.mem_title)) },
             text = {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     TextButton(onClick = { chosen = null; onUse(picked, "stage") }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.mem_stage))
                     }

@@ -215,7 +215,7 @@
     <string name="stk_empty">مفيش ملصقات لسه. استورد ملصقاتك من الموبايل.</string>
     <string name="stk_import">استيراد من الجهاز</string>
     <string name="stk_delete">وضع المسح</string>
-    <string name="stk_hint">نصيحة: اختار ملصقات الواتساب من ذاكرة الموبايل، أو رُد على أي ملصق في الواتساب بـ .ملصقاتي حفظ</string>
+    <string name="stk_hint">نصيحة: اختار ملصقات الواتساب من ذاكرة الموبايل، أو رُد على أي ملصق في الواتساب بـ .ملصقاتي حفظ وبتقدر تستورد ملصقات متحركة كمان (webp أو gif لحد 1 ميجا).</string>
     <string name="stk_imported">اتضاف %1$d ملصق</string>
     <string name="ago_now">الآن</string>
     <string name="ago_m">%1$d د</string>
@@ -362,4 +362,7 @@
     <string name="chat_kind_image">صورة</string>
     <string name="chat_image_ready">الصورة جاهزة. اكتب تعليق لو عايز وابعت</string>
     <string name="chat_image_failed">معرفتش أجهّز الصورة، جرّب صورة تانية</string>
+    <string name="msg_flow_emoji">إيموجي الـ Flow</string>
+    <string name="msg_flare_emoji">إيموجي الفلير</string>
+    <string name="msg_emoji_custom">أو اكتب إيموجي تاني</string>
 </resources>

@@ -1,5 +1,9 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.Manifest
 import android.content.pm.PackageManager
 import android.util.Base64
@@ -333,7 +337,7 @@ fun ChatsScreen(
                                 },
                             )
                         }
-                        Text("⚡ " + ff.streak, style = MaterialTheme.typography.titleMedium)
+                        Text(ChatPrefs.flareEmoji(ctx) + " " + ff.streak, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -366,7 +370,7 @@ fun ChatsScreen(
                             }
                         }
                         if (f.status == "active") {
-                            Text("🔥 " + f.streak, style = MaterialTheme.typography.titleMedium)
+                            Text(ChatPrefs.flowEmoji(ctx) + " " + f.streak, style = MaterialTheme.typography.titleMedium)
                         } else if (f.incoming) {
                             Column {
                                 Button(onClick = { answer("/candy/flow/accept", f.peerHash) }) { Text(stringResource(R.string.flow_accept)) }
@@ -389,7 +393,7 @@ fun ChatsScreen(
                 )
             }
         }
-        if (loading) item { Loading() }
+        if (loading) item { SkeletonCards(4, tall = false) }
         if (!loading && error.isEmpty() && threads.isEmpty()) {
             item { Muted(stringResource(R.string.chats_empty), Modifier.padding(vertical = 16.dp)) }
         }
@@ -493,6 +497,8 @@ fun ChatScreen(
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var tempCounter by remember { mutableStateOf(0) }       // numbers for messages shown before the bot has answered (negative: they never clash with real ones)
+    val haptic = LocalHapticFeedback.current
     var lastTypingSent by remember { mutableStateOf(0L) }
     val listState = rememberLazyListState()
     var selected by remember { mutableStateOf<ChatMsg?>(null) }
@@ -986,16 +992,36 @@ fun ChatScreen(
         }
         val text = if (sticker == null) input.trim() else ""
         if ((text.isEmpty() && sticker == null) || busy) return
+        val quoted = replyTo
+        // A text message shows at once, as sent, and the box empties; the real message replaces it when the bot answers.
+        // If sending fails it goes back into the box, so nothing typed is lost.
+        if (sticker == null) tempCounter -= 1
+        val temp: ChatMsg? = if (sticker == null) {
+            ChatMsg(
+                n = tempCounter, mine = true, text = text, loopId = null, loopOwnerHash = "", loopOwnerName = "", loopGone = false,
+                stickerId = null, replyN = quoted?.n ?: 0, replyText = quoted?.text.orEmpty(), replyMine = quoted?.mine ?: false,
+                replyKind = "", trackId = null, trackOwnerHash = "", trackOwnerName = "", trackCaption = "", trackHasImage = false,
+                trackGone = false, at = System.currentTimeMillis(), edited = false, deleted = false, myReaction = null,
+                theirReaction = null, forwarded = false, hidden = false, sys = null, sysValue = "", voiceMs = null,
+            )
+        } else {
+            null
+        }
+        if (temp != null) {
+            messages.add(temp)
+            input = ""
+            replyTo = null
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
         scope.launch {
             busy = true
             val body = JSONObject().put("hash", bareHash(hash)).put("text", text)
             if (sticker != null) body.put("sticker", sticker)
-            val quoted = replyTo
             if (quoted != null) body.put("reply", quoted.n)
             val r = net.post("/candy/dm/send", body)
             busy = false
+            if (temp != null) messages.removeAll { it.n == temp.n }
             if (r.ok) {
-                if (sticker == null) input = ""
                 replyTo = null
                 error = ""
                 val m = r.body?.optJSONObject("message")?.toChatMsg()
@@ -1007,6 +1033,10 @@ fun ChatScreen(
                 remaining = if (r.body != null && !r.body.isNull("remaining")) r.body.optInt("remaining") else null
             } else {
                 error = r.message(ctx)
+                if (temp != null) {
+                    input = text
+                    replyTo = quoted
+                }
                 if (r.status == 403) canSend = false
             }
         }
@@ -1184,7 +1214,7 @@ fun ChatScreen(
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (f == null) {
                     TextButton(onClick = { flowAction("/candy/flow/request") }) {
-                        Text("🔥 " + stringResource(R.string.flow_start))
+                        Text(ChatPrefs.flowEmoji(ctx) + " " + stringResource(R.string.flow_start))
                     }
                 } else if (f.status == "pending") {
                     if (f.incoming) {
@@ -1203,7 +1233,7 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("🔥 " + f.streak, style = MaterialTheme.typography.titleLarge)
+                        Text(ChatPrefs.flowEmoji(ctx) + " " + f.streak, style = MaterialTheme.typography.titleLarge)
                         TextButton(onClick = { flowAction("/candy/flow/end") }) { Text(stringResource(R.string.flow_end)) }
                     }
                     Muted((if (f.iSent) "✅ " else "⬜ ") + stringResource(if (f.iSent) R.string.flow_you_sent else R.string.flow_you_not))
@@ -1225,7 +1255,7 @@ fun ChatScreen(
         } else {
         // my last message the other person has read gets the little eye
         val lastSeenN = if (ChatPrefs.seenPlace(ctx) != "chat") null
-        else seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n <= up }?.n }
+        else seenUpTo?.let { up -> messages.lastOrNull { it.mine && !it.deleted && it.sys == null && it.n > 0 && it.n <= up }?.n }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
@@ -1602,7 +1632,7 @@ fun ChatScreen(
             onDismissRequest = { pinning = null },
             title = { Text(stringResource(R.string.msg_pin_title)) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     for ((key, label) in listOf("1h" to R.string.msg_pin_1h, "24h" to R.string.msg_pin_24h, "7d" to R.string.msg_pin_7d, "30d" to R.string.msg_pin_30d)) {
                         TextButton(onClick = { pinMsg(pinTarget, key); pinning = null }, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(label))
@@ -1621,7 +1651,7 @@ fun ChatScreen(
             onDismissRequest = { deleting = null },
             title = { Text(stringResource(R.string.msg_action_delete)) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (delTarget.mine) {
                         TextButton(onClick = { deleteMsg(delTarget); deleting = null }, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(R.string.msg_delete_everyone))
@@ -1654,7 +1684,7 @@ fun ChatScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -1740,7 +1770,7 @@ private fun ForwardDialog(net: Net, m: ChatMsg, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.msg_forward_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (p in recent) {
                     TextButton(onClick = { sendTo(p.hash) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(p.name.ifBlank { p.hash })
@@ -1833,7 +1863,7 @@ private fun EmojiPickerDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.msg_react_more)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (row in MORE_REACTIONS.chunked(6)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         for (e in row) {

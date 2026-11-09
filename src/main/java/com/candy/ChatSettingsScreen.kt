@@ -183,7 +183,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             onDismissRequest = { dialog = "" },
             title = { Text(stringResource(R.string.cs_theme)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     for (th in ChatThemes) {
                         Row(
                             Modifier
@@ -220,7 +220,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             onDismissRequest = { dialog = "" },
             title = { Text(stringResource(R.string.msg_delete_mode)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     ChoiceRow(deleteMode == "announce", stringResource(R.string.msg_delete_announce)) {
                         post("/candy/dm/deletemode", JSONObject().put("mode", "announce"))
                     }
@@ -253,7 +253,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             onDismissRequest = { dialog = "" },
             title = { Text(stringResource(R.string.cs_seen)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     ChoiceRow(seen == "default", stringResource(if (hideSeen) R.string.cs_seen_default_hidden else R.string.cs_seen_default_shown)) {
                         post("/candy/dm/settings", JSONObject().put("seen", "default"))
                         dialog = ""
@@ -276,7 +276,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             onDismissRequest = { dialog = "" },
             title = { Text(stringResource(R.string.cs_nick)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Field(stringResource(R.string.cs_nick_label), nickDraft, { nickDraft = it.take(30) })
                     Muted(stringResource(R.string.cs_nick_hint))
                 }

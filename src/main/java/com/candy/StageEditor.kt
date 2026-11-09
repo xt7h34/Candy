@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -391,7 +393,7 @@ private fun TextDialog(initial: Overlay, canDelete: Boolean, onSave: (Overlay) -
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.stage_add_text)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Field(stringResource(R.string.stage_text_hint), text, { text = it.take(80) }, singleLine = false)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (i in OVERLAY_COLORS.indices) {

@@ -215,7 +215,7 @@
     <string name="stk_empty">No stickers yet. Import yours from the phone.</string>
     <string name="stk_import">Import from device</string>
     <string name="stk_delete">Delete mode</string>
-    <string name="stk_hint">Tip: pick your WhatsApp stickers from the phone storage, or reply to a sticker in WhatsApp with .ملصقاتي حفظ</string>
+    <string name="stk_hint">Tip: pick your WhatsApp stickers from the phone storage, or reply to a sticker in WhatsApp with .ملصقاتي حفظ Animated stickers work too (webp or gif, up to 1 MB).</string>
     <string name="stk_imported">Added %1$d stickers</string>
     <string name="ago_now">now</string>
     <string name="ago_m">%1$dm</string>
@@ -362,4 +362,7 @@
     <string name="chat_kind_image">Photo</string>
     <string name="chat_image_ready">Photo ready. Add a caption if you like, then send</string>
     <string name="chat_image_failed">Could not prepare the photo, try another one</string>
+    <string name="msg_flow_emoji">Flow emoji</string>
+    <string name="msg_flare_emoji">Flare emoji</string>
+    <string name="msg_emoji_custom">Or type another emoji</string>
 </resources>

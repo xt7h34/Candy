@@ -370,7 +370,7 @@ private fun VibeDialog(initial: String, max: Int, onSave: (String) -> Unit, onCl
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.prof_vibe_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Field("", text, { text = it.take(max) }, singleLine = false)
                 Muted(stringResource(R.string.prof_count, text.length, max))
                 TextButton(onClick = onClear) { Text(stringResource(R.string.prof_clear)) }

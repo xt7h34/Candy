@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -276,7 +278,7 @@ fun AvatarEditor(net: Net, myHash: String, avatar: JSONObject?, onChanged: () ->
             onDismissRequest = { open = false },
             title = { Text(stringResource(R.string.avatar_title)) },
             text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     TextButton(
                         onClick = { open = false; pick.launch("image/*") },
                         modifier = Modifier.fillMaxWidth(),

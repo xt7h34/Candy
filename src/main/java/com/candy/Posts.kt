@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.content.Context
 import android.graphics.Bitmap
 import android.widget.Toast
@@ -325,12 +327,14 @@ object PostImagePrep {
 @Composable
 fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int) {
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     var liked by remember(postId) { mutableStateOf(initialLiked) }
     var likes by remember(postId) { mutableStateOf(initialLikes) }
 
     TextButton(
         onClick = {
             val was = liked
+            if (!was) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)   // a small tap when you like
             liked = !was
             likes += if (was) -1 else 1
             scope.launch {

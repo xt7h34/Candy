@@ -1,5 +1,16 @@
 package com.candy
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.core.app.NotificationManagerCompat
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +58,52 @@ object ChatPrefs {
     /** Where the little eye (the other person read my last message) shows: "list" at the end of the chat's row in the inbox, or "chat" under the message. */
     fun seenPlace(c: Context): String = if (sp(c).getString("seen_place", "list") == "chat") "chat" else "list"
     fun setSeenPlace(c: Context, v: String) = sp(c).edit().putString("seen_place", v).apply()
+
+    /** The emoji next to a Flow streak (default 🔥) and next to a Flare streak (default ⚡). Each person picks their own; it shows on their phone. */
+    fun flowEmoji(c: Context): String = sp(c).getString("flow_emoji", null)?.takeIf { it.isNotBlank() } ?: "🔥"
+    fun flareEmoji(c: Context): String = sp(c).getString("flare_emoji", null)?.takeIf { it.isNotBlank() } ?: "⚡"
+    fun setFlowEmoji(c: Context, v: String) = sp(c).edit().putString("flow_emoji", v).apply()
+    fun setFlareEmoji(c: Context, v: String) = sp(c).edit().putString("flare_emoji", v).apply()
+
+    /** At most [max] characters as a person sees them (an emoji with its skin tone or joiners counts as one). */
+    fun limitEmoji(s: String, max: Int = 2): String {
+        val iter = android.icu.text.BreakIterator.getCharacterInstance()
+        iter.setText(s)
+        var end = 0
+        var n = 0
+        while (n < max) {
+            val next = iter.next()
+            if (next == android.icu.text.BreakIterator.DONE) {
+                end = s.length
+                break
+            }
+            end = next
+            n++
+        }
+        return s.substring(0, minOf(end, s.length))
+    }
+}
+
+private val FLOW_EMOJIS = listOf("🔥", "❤️‍🔥", "💖", "✨", "🌟", "🚀", "🍭", "💫", "🎯", "🌈", "⭐", "🏆")
+private val FLARE_EMOJIS = listOf("⚡", "📸", "✨", "💥", "🌟", "💫", "👀", "🔆", "🎇", "🍬", "💎", "🌠")
+
+/** A row of emojis to pick from; the chosen one is highlighted. */
+@Composable
+private fun EmojiChoices(current: String, options: List<String>, onPick: (String) -> Unit) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (e in options) {
+            val on = e == current
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (on) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                    .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .clickable { onPick(e) },
+                contentAlignment = Alignment.Center,
+            ) { Text(e, style = MaterialTheme.typography.titleLarge) }
+        }
+    }
 }
 
 @Composable
@@ -84,6 +141,10 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     var menu by remember { mutableStateOf(ChatPrefs.menuStyle(ctx)) }
     var typing by remember { mutableStateOf(ChatPrefs.typingStyle(ctx)) }
     var seenPlace by remember { mutableStateOf(ChatPrefs.seenPlace(ctx)) }
+    var flowEmoji by remember { mutableStateOf(ChatPrefs.flowEmoji(ctx)) }
+    var flareEmoji by remember { mutableStateOf(ChatPrefs.flareEmoji(ctx)) }
+    var flowCustom by remember { mutableStateOf("") }
+    var flareCustom by remember { mutableStateOf("") }
     var notifAllowed by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
     var testState by remember { mutableStateOf("") }
     var testing by remember { mutableStateOf(false) }
@@ -92,7 +153,7 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.msg_settings_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 SectionTitle(stringResource(R.string.msg_menu_style))
                 ChoiceRow(menu == "bar", stringResource(R.string.msg_menu_bar)) {
                     menu = "bar"
@@ -138,6 +199,34 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                     seenPlace = "chat"
                     ChatPrefs.setSeenPlace(ctx, "chat")
                 }
+                Spacer(Modifier.padding(top = 8.dp))
+                SectionTitle(stringResource(R.string.msg_flow_emoji))
+                EmojiChoices(flowEmoji, FLOW_EMOJIS) {
+                    flowEmoji = it
+                    flowCustom = ""
+                    ChatPrefs.setFlowEmoji(ctx, it)
+                }
+                Field(stringResource(R.string.msg_emoji_custom), flowCustom, {
+                    flowCustom = ChatPrefs.limitEmoji(it)
+                    if (flowCustom.isNotBlank()) {
+                        flowEmoji = flowCustom
+                        ChatPrefs.setFlowEmoji(ctx, flowCustom)
+                    }
+                })
+                Spacer(Modifier.padding(top = 4.dp))
+                SectionTitle(stringResource(R.string.msg_flare_emoji))
+                EmojiChoices(flareEmoji, FLARE_EMOJIS) {
+                    flareEmoji = it
+                    flareCustom = ""
+                    ChatPrefs.setFlareEmoji(ctx, it)
+                }
+                Field(stringResource(R.string.msg_emoji_custom), flareCustom, {
+                    flareCustom = ChatPrefs.limitEmoji(it)
+                    if (flareCustom.isNotBlank()) {
+                        flareEmoji = flareCustom
+                        ChatPrefs.setFlareEmoji(ctx, flareCustom)
+                    }
+                })
                 Spacer(Modifier.padding(top = 8.dp))
                 SectionTitle(stringResource(R.string.msg_push_title))
                 Row(

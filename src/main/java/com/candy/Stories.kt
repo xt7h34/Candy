@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.VideoView
@@ -282,7 +284,7 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
             onDismissRequest = { viewers = null; paused = false },
             title = { Text(stringResource(R.string.story_viewers_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (shownViewers.isEmpty()) Text(stringResource(R.string.story_no_viewers))
                     for (v in shownViewers) {
                         Row(

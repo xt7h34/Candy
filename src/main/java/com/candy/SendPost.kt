@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,7 +63,7 @@ fun SendPostDialog(net: Net, postId: String, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.post_share_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (m in recent) {
                     TextButton(onClick = { sendTo(m.hash) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(m.name.ifBlank { m.hash })

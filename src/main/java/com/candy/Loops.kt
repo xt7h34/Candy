@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -266,7 +268,7 @@ private fun SendLoopDialog(net: Net, loopId: String, onDismiss: () -> Unit) {
             busy = false
             if (r.ok) {
                 val streak = r.body?.optJSONObject("flow")?.optInt("streak") ?: 0
-                done = ctx.getString(R.string.loop_sent) + if (streak > 0) "  🔥 $streak" else ""
+                done = ctx.getString(R.string.loop_sent) + if (streak > 0) "  ${ChatPrefs.flowEmoji(ctx)} $streak" else ""
             } else {
                 error = r.message(ctx)
             }
@@ -277,10 +279,10 @@ private fun SendLoopDialog(net: Net, loopId: String, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.loop_send_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (f in flows) {
                     TextButton(onClick = { sendTo(f.peerHash) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text("🔥 " + f.streak + "  " + f.peerName.ifBlank { f.peerHash })
+                        Text(ChatPrefs.flowEmoji(ctx) + " " + f.streak + "  " + f.peerName.ifBlank { f.peerHash })
                     }
                 }
                 Field(stringResource(R.string.loop_send_hash), typed, { typed = it })
