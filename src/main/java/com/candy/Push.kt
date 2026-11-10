@@ -27,17 +27,77 @@ object PushState {
 
 /** Notifications for new messages. They arrive from the bot through Firebase, and are built here on the phone. */
 object Push {
-    const val CHANNEL = "messages"
+    // The first channel ("messages") could not be told to vibrate once it existed, so messages now use a new one.
+    const val CHANNEL = "messages_v2"
+    const val CHANNEL_SOCIAL = "social"          // new followers, and new tracks or stories from people whose bell you turned on
+    private const val OLD_CHANNEL = "messages"
     const val EXTRA_CHAT = "open_chat"
+    const val EXTRA_PROFILE = "open_profile"
 
     fun ensureChannel(ctx: Context) {
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            if (nm.getNotificationChannel(OLD_CHANNEL) != null) nm.deleteNotificationChannel(OLD_CHANNEL)
             if (nm.getNotificationChannel(CHANNEL) == null) {
                 nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL, ctx.getString(R.string.push_channel_messages), NotificationManager.IMPORTANCE_HIGH),
+                    NotificationChannel(CHANNEL, ctx.getString(R.string.push_channel_messages), NotificationManager.IMPORTANCE_HIGH).apply {
+                        enableVibration(true)
+                        vibrationPattern = longArrayOf(0, 250, 120, 250)
+                    },
                 )
             }
+            if (nm.getNotificationChannel(CHANNEL_SOCIAL) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(CHANNEL_SOCIAL, ctx.getString(R.string.push_channel_social), NotificationManager.IMPORTANCE_HIGH).apply {
+                        enableVibration(true)
+                        vibrationPattern = longArrayOf(0, 180, 100, 180)
+                    },
+                )
+            }
+        }
+    }
+
+    /** A new follower, or a new track, loop or story from someone whose bell you turned on. Tapping it opens that person. */
+    private fun showSocial(ctx: Context, data: Map<String, String>) {
+        val hash = bareHash(data["hash"].orEmpty())
+        if (hash.isEmpty()) return
+        if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
+        ensureChannel(ctx)
+        val name = data["name"].orEmpty().ifBlank { data["hash"].orEmpty() }
+        val kind = data["kind"].orEmpty()
+        val text = if (data["type"] == "follow") {
+            ctx.getString(R.string.push_followed)
+        } else {
+            val what = ctx.getString(
+                when (kind) {
+                    "story" -> R.string.push_new_story
+                    "loop" -> R.string.push_new_loop
+                    else -> R.string.push_new_track
+                },
+            )
+            val preview = data["preview"].orEmpty()
+            if (preview.isNotBlank()) "$what: $preview" else what
+        }
+        val open = Intent(ctx, MainActivity::class.java)
+            .putExtra(EXTRA_PROFILE, data["hash"].orEmpty())
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val id = (data["type"].orEmpty() + "_" + kind + "_" + hash).hashCode()
+        val pending = PendingIntent.getActivity(ctx, id, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val note = NotificationCompat.Builder(ctx, CHANNEL_SOCIAL)
+            .setSmallIcon(R.drawable.ic_notification_candy)
+            .setColor(0xFFE9788C.toInt())
+            .setContentTitle(name)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(id, note)
+        } catch (e: SecurityException) {
+            // notifications are not allowed on this phone
         }
     }
 
@@ -106,6 +166,10 @@ object Push {
     fun show(ctx: Context, data: Map<String, String>) {
         if (data["type"] == "test") {
             showTest(ctx)
+            return
+        }
+        if (data["type"] == "follow" || data["type"] == "post") {
+            showSocial(ctx, data)
             return
         }
         if (data["type"] != "dm") return

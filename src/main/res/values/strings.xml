@@ -365,4 +365,13 @@
     <string name="msg_flow_emoji">Flow emoji</string>
     <string name="msg_flare_emoji">Flare emoji</string>
     <string name="msg_emoji_custom">Or type another emoji</string>
+    <string name="push_channel_social">Followers and new posts</string>
+    <string name="push_followed">started following you 💫</string>
+    <string name="push_new_track">posted a new track 🖼️</string>
+    <string name="push_new_loop">posted a new loop 🎬</string>
+    <string name="push_new_story">added a new story ⭕</string>
+    <string name="msg_push_follows">Notify me about new followers</string>
+    <string name="msg_push_posts">Alerts for tracks and stories (people whose bell is on)</string>
+    <string name="prof_bell_off">Notify me about their tracks and stories</string>
+    <string name="prof_bell_on">You will be alerted about their new posts (tap to stop)</string>
 </resources>

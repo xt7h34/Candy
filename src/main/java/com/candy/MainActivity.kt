@@ -1,5 +1,9 @@
 package com.candy
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -57,7 +61,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handoff = handoffCode(intent)
-        openChat = intent.getStringExtra(Push.EXTRA_CHAT)
+        openChat = intent.getStringExtra(Push.EXTRA_CHAT) ?: intent.getStringExtra(Push.EXTRA_PROFILE)?.let { "@profile:" + it }
         Push.ensureChannel(this)
         ApiCache.init(this)
         MediaCache.init(this)
@@ -71,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     onChatOpened = {
                         openChat = null
                         intent.removeExtra(Push.EXTRA_CHAT)
+                        intent.removeExtra(Push.EXTRA_PROFILE)
                     },
                 ) {
                     handoff = null
@@ -94,7 +99,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handoff = handoffCode(intent)
-        openChat = intent.getStringExtra(Push.EXTRA_CHAT)
+        openChat = intent.getStringExtra(Push.EXTRA_CHAT) ?: intent.getStringExtra(Push.EXTRA_PROFILE)?.let { "@profile:" + it }
     }
 }
 
@@ -236,7 +241,8 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
     LaunchedEffect(openChat) {
         val h = openChat ?: return@LaunchedEffect
         stack.clear()
-        stack.add(Dest.Chat(h))
+        // "@profile:<hash>" comes from a notification about a person (a new follower, a new track or story); anything else is a chat
+        if (h.startsWith("@profile:")) stack.add(Dest.Profile(h.removePrefix("@profile:"))) else stack.add(Dest.Chat(h))
         onChatOpened()
     }
 
@@ -266,9 +272,25 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
         val r = net.get("/candy/dm/unread")
         if (r.ok) unread = (r.body?.optInt("count") ?: 0) + (r.body?.optInt("flares") ?: 0)
     }
-    PollingEffect(Unit, 60_000L) {
+    // the badge on the chats tab also refreshes the moment the bot taps us (see Events)
+    PollingEffect(Events.dmTick, 60_000L) {
         val r = net.get("/candy/dm/unread")
         if (r.ok) unread = (r.body?.optInt("count") ?: 0) + (r.body?.optInt("flares") ?: 0)
+    }
+
+    // the live line to the bot: open while the app is on screen, closed when it is not
+    val liveScope = rememberCoroutineScope()
+    val liveOwner = pushCtx as LifecycleOwner
+    DisposableEffect(net.token) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) Events.start(liveScope, net.token)
+            else if (event == Lifecycle.Event.ON_STOP) Events.stop()
+        }
+        liveOwner.lifecycle.addObserver(observer)   // if the app is already on screen this starts it right away
+        onDispose {
+            liveOwner.lifecycle.removeObserver(observer)
+            Events.stop()
+        }
     }
 
     BackHandler(enabled = stack.isNotEmpty()) { stack.removeAt(stack.lastIndex) }

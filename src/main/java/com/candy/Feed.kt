@@ -1,5 +1,8 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.rememberScrollState
@@ -77,6 +80,7 @@ fun FeedScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
+    val haptic = LocalHapticFeedback.current
     var composing by remember { mutableStateOf(false) }
 
     fun applyPosts(r: ApiResult, before: Long?) {
@@ -132,7 +136,10 @@ fun FeedScreen(
 
     PullToRefreshBox(
         isRefreshing = loading && (posts.isNotEmpty() || drifts.isNotEmpty()),
-        onRefresh = { reload++ },
+        onRefresh = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            reload++
+        },
     ) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = LocalBarInset.current),
@@ -160,18 +167,13 @@ fun FeedScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        TextButton(onClick = { reload++ }) { Text(stringResource(R.string.refresh)) }
+                        Spacer(Modifier.size(44.dp))   // pulling the feed down refreshes it now; this keeps the title in the middle
                     }
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onNewPost, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.feed_new_post))
-                    }
-                    OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.feed_new))
-                    }
+                OutlinedButton(onClick = { composing = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feed_new))
                 }
             }
             if (stories.isNotEmpty()) item { StoriesRow(net.token, stories, onOpenStory) }

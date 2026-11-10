@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
@@ -304,7 +306,19 @@ fun ProfileScreen(
                     MutualCircles(net, mutuals) { onMutuals(u.hash) }
                 }
                 if (!u.isMe) {
+                    val haptic = LocalHapticFeedback.current
+                    // the bell: a notification for every new track, loop or story from this person (only for people you follow)
+                    var bell by remember(u.hash) { mutableStateOf(false) }
+                    LaunchedEffect(u.hash, u.followedByMe) {
+                        if (u.followedByMe) {
+                            val r = net.get("/candy/notify/sub?hash=" + Uri.encode(bareHash(u.hash)))
+                            if (r.ok) bell = r.body?.optBoolean("on") == true
+                        } else {
+                            bell = false
+                        }
+                    }
                     val toggle: () -> Unit = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         scope.launch {
                             busy = true
                             error = ""
@@ -328,6 +342,24 @@ fun ProfileScreen(
                             shape = CircleShape,
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(stringResource(R.string.prof_follow)) }
+                    }
+                    if (u.followedByMe) {
+                        OutlinedButton(
+                            onClick = {
+                                val want = !bell
+                                bell = want
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                scope.launch {
+                                    val r = net.post("/candy/notify/sub", JSONObject().put("hash", bareHash(u.hash)).put("on", want))
+                                    if (!r.ok) {
+                                        bell = !want
+                                        error = r.message(ctx)
+                                    }
+                                }
+                            },
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (bell) "🔔 " + stringResource(R.string.prof_bell_on) else "🔕 " + stringResource(R.string.prof_bell_off)) }
                     }
                     OutlinedButton(
                         onClick = { onMessage(u.hash) },

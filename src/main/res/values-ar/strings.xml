@@ -365,4 +365,13 @@
     <string name="msg_flow_emoji">إيموجي الـ Flow</string>
     <string name="msg_flare_emoji">إيموجي الفلير</string>
     <string name="msg_emoji_custom">أو اكتب إيموجي تاني</string>
+    <string name="push_channel_social">المتابعين والجديد</string>
+    <string name="push_followed">بدأ يتابعك 💫</string>
+    <string name="push_new_track">نزّل تراك جديد 🖼️</string>
+    <string name="push_new_loop">نزّل لوب جديد 🎬</string>
+    <string name="push_new_story">حط ستوري جديدة ⭕</string>
+    <string name="msg_push_follows">إشعار لما حد يتابعني</string>
+    <string name="msg_push_posts">تنبيهات التراكات والستوريز (للي فعّلت جرسهم)</string>
+    <string name="prof_bell_off">نبّهني بتراكاته وستوريزه</string>
+    <string name="prof_bell_on">هيجيلك تنبيه بجديده (اضغط للإلغاء)</string>
 </resources>

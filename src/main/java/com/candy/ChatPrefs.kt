@@ -127,6 +127,8 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     var seenLoaded by remember { mutableStateOf(false) }
     var pushEnabled by remember { mutableStateOf(true) }
     var pushPreview by remember { mutableStateOf(true) }
+    var pushFollows by remember { mutableStateOf(true) }
+    var pushPosts by remember { mutableStateOf(true) }
     var pushReady by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         val r = net.get("/candy/me")
@@ -134,6 +136,8 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
             hideSeen = r.body?.optBoolean("hideSeen") == true
             pushEnabled = r.body?.optBoolean("pushEnabled", true) != false
             pushPreview = r.body?.optBoolean("pushPreview", true) != false
+            pushFollows = r.body?.optBoolean("pushFollows", true) != false
+            pushPosts = r.body?.optBoolean("pushPosts", true) != false
             pushReady = r.body?.optBoolean("pushReady", true) != false
             seenLoaded = true
         }
@@ -256,6 +260,36 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                         onCheckedChange = { on ->
                             pushPreview = on
                             scope.launch { net.post("/candy/push/prefs", JSONObject().put("preview", on)) }
+                        },
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_push_follows), Modifier.weight(1f))
+                    Switch(
+                        checked = pushFollows,
+                        enabled = seenLoaded && pushEnabled,
+                        onCheckedChange = { on ->
+                            pushFollows = on
+                            scope.launch { net.post("/candy/push/prefs", JSONObject().put("follows", on)) }
+                        },
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_push_posts), Modifier.weight(1f))
+                    Switch(
+                        checked = pushPosts,
+                        enabled = seenLoaded && pushEnabled,
+                        onCheckedChange = { on ->
+                            pushPosts = on
+                            scope.launch { net.post("/candy/push/prefs", JSONObject().put("posts", on)) }
                         },
                     )
                 }

@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.rememberScrollState
@@ -238,6 +239,7 @@ fun ChatsScreen(
     var flareFriends by remember { mutableStateOf<List<FlareFriend>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
+    var composingDrift by remember { mutableStateOf(false) }
     var tick by remember { mutableStateOf(0) }
 
     fun parseThreads(arr: org.json.JSONArray?): List<ChatThread> {
@@ -274,7 +276,7 @@ fun ChatsScreen(
         }
     }
 
-    PollingEffect(refreshKey to tick, 30_000L) {
+    PollingEffect(Triple(refreshKey, tick, Events.dmTick), { if (Events.connected) 60_000L else 30_000L }) {
         // the three lists are independent, so they are asked for together instead of one after the other
         val (r, f, fl) = coroutineScope {
             val a = async { net.get("/candy/dm/inbox") }
@@ -300,11 +302,25 @@ fun ChatsScreen(
         }
     }
 
+    if (composingDrift) {
+        DriftComposer(
+            net = net,
+            onDismiss = { composingDrift = false },
+            onPosted = { composingDrift = false },
+        )
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(bottom = LocalBarInset.current),
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // a new drift is one tap away, right above the chats
+        item {
+            OutlinedButton(onClick = { composingDrift = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(stringResource(R.string.feed_new))
+            }
+        }
         item { ErrorText(error) }
 
         if (flareFriends.isNotEmpty()) {
@@ -621,7 +637,9 @@ fun ChatScreen(
 
     LaunchedEffect(messages.size) { quietRounds = 0 }
 
-    PollingEffect(hash, { if (peerTyping) 1500L else if (quietRounds >= 6) 10_000L else 5000L }) {
+    // A tap from the bot (Events.dmTick) refreshes this at once. While the live line is open the regular round can be slow;
+    // while the other person types it stays quick, because nothing taps us when they stop.
+    PollingEffect(hash to Events.dmTick, { if (peerTyping) 1500L else if (Events.connected) 25_000L else if (quietRounds >= 6) 10_000L else 5000L }) {
         // while the saved copy is on screen, the first real answer is the whole chat again, and it replaces the copy
         val replacing = showingSaved
         val r = if (replacing) {
@@ -740,6 +758,7 @@ fun ChatScreen(
     // ───── voice messages ─────
     fun startRecording() {
         if (recorder.start()) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             recording = true
             recPaused = false
             limitReached = false
@@ -848,6 +867,7 @@ fun ChatScreen(
     }
 
     fun react(m: ChatMsg, emoji: String) {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         scope.launch {
             val r = net.post("/candy/dm/react", JSONObject().put("hash", bareHash(hash)).put("n", m.n).put("emoji", emoji))
             if (r.ok) r.body?.optJSONObject("message")?.toChatMsg()?.let { replaceMsg(it) } else error = r.message(ctx)
@@ -967,9 +987,11 @@ fun ChatScreen(
     fun send(sticker: String? = null) {
         val picked = pendingImage
         if (picked != null && sticker == null && editing == null) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             sendPicture(picked)
             return
         }
+        if (sticker != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         // editing a message of mine: the same box, but it changes the old message instead of sending a new one
         val editTarget = editing
         if (editTarget != null && sticker == null) {
@@ -1043,6 +1065,7 @@ fun ChatScreen(
     }
 
     fun flowAction(path: String) {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         scope.launch {
             val r = net.post(path, JSONObject().put("hash", bareHash(hash)))
             if (r.ok) {
@@ -1327,7 +1350,7 @@ fun ChatScreen(
                                 if (m.replyN > 0) QuoteBlock(m, quoteWho, MaterialTheme.colorScheme.onSurface)
                                 StickerImage(
                                     stickerId, net.token, 120.dp,
-                                    Modifier.combinedClickable(onClick = { stickerMsg = m }, onLongClick = { selected = m }),
+                                    Modifier.combinedClickable(onClick = { stickerMsg = m }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m }),
                                 )
                             }
                         } else {
@@ -1335,7 +1358,7 @@ fun ChatScreen(
                                 Modifier
                                     .widthIn(max = 260.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .combinedClickable(onClick = {}, onLongClick = { selected = m })
+                                    .combinedClickable(onClick = {}, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m })
                                     .background(if (m.mine) (theme.mine ?: MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.surfaceVariant)
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1354,7 +1377,7 @@ fun ChatScreen(
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .combinedClickable(
                                                     onClick = { onOpenLoop(m.loopOwnerHash, loopId) },
-                                                    onLongClick = { selected = m },
+                                                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m },
                                                 ),
                                         ) {
                                             PostImage(loopId, net.token, true, 1f)
@@ -1374,7 +1397,7 @@ fun ChatScreen(
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .combinedClickable(
                                                     onClick = { onOpenPost(trackId) },
-                                                    onLongClick = { selected = m },
+                                                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m },
                                                 ),
                                             verticalArrangement = Arrangement.spacedBy(4.dp),
                                         ) {
@@ -1396,7 +1419,7 @@ fun ChatScreen(
                                         w = m.imageW,
                                         h = m.imageH,
                                         onClick = { imageMsg = m },
-                                        onLongClick = { selected = m },
+                                        onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m },
                                     )
                                 }
                                 if (m.text.isNotEmpty()) {

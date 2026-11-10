@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +54,7 @@ private val NavTabs = listOf(
 /** The bottom bar: a floating pill, with a gold pill behind the tab you are on. */
 @Composable
 fun FloatingNavBar(selected: Int, unread: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier
             .fillMaxWidth()
@@ -79,7 +82,10 @@ fun FloatingNavBar(selected: Int, unread: Int, onSelect: (Int) -> Unit, modifier
                             .height(52.dp)
                             .clip(CircleShape)
                             .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                            .clickable(role = Role.Tab) { onSelect(i) }
+                            .clickable(role = Role.Tab) {
+                                if (i != selected) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelect(i)
+                            }
                             .semantics { contentDescription = label },
                         contentAlignment = Alignment.Center,
                     ) {
