@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material3.FilterChip
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.layout.Spacer
@@ -80,8 +81,15 @@ fun FeedScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberAppHaptic()
     var composing by remember { mutableStateOf(false) }
+    var feedAll by remember { mutableStateOf(ChatPrefs.feedAll(ctx)) }       // everyone's tracks, or only the people you follow
+    fun feedPath(before: Long?): String {
+        val q = ArrayList<String>()
+        if (feedAll) q.add("scope=all")
+        if (before != null) q.add("before=$before")
+        return "/candy/posts/feed" + if (q.isEmpty()) "" else "?" + q.joinToString("&")
+    }
 
     fun applyPosts(r: ApiResult, before: Long?) {
         if (r.ok) {
@@ -95,7 +103,7 @@ fun FeedScreen(
     }
 
     suspend fun loadPosts(before: Long?) {
-        applyPosts(net.get("/candy/posts/feed" + if (before != null) "?before=$before" else ""), before)
+        applyPosts(net.get(feedPath(before)), before)
     }
 
     // your own drifts come first, then the ones from people you follow
@@ -103,14 +111,14 @@ fun FeedScreen(
         drifts = body?.optJSONArray("mine").toDrifts() + body?.optJSONArray("items").toDrifts()
     }
 
-    LaunchedEffect(reload, refreshKey) {
+    LaunchedEffect(reload, refreshKey, feedAll) {
         loading = true
         // The feed as it was last time goes on screen at once (only when nothing is shown yet), so opening the app never starts
         // with a spinner; the fresh answers replace it a moment later.
         if (posts.isEmpty() && drifts.isEmpty() && stories.isEmpty()) {
             val savedFeed = net.peek("/candy/feed")
             val savedStories = net.peek("/candy/stories")
-            val savedPosts = net.peek("/candy/posts/feed")
+            val savedPosts = net.peek(feedPath(null))
             if (posts.isEmpty() && drifts.isEmpty() && stories.isEmpty()) {
                 if (savedFeed != null) applyDrifts(savedFeed)
                 if (savedStories != null) stories = savedStories.optJSONArray("groups").toStoryGroups()
@@ -125,7 +133,7 @@ fun FeedScreen(
         val (r, s, p) = coroutineScope {
             val a = async { net.get("/candy/feed") }
             val b = async { net.get("/candy/stories") }
-            val c = async { net.get("/candy/posts/feed") }
+            val c = async { net.get(feedPath(null)) }
             Triple(a.await(), b.await(), c.await())
         }
         if (r.ok) applyDrifts(r.body) else error = r.message(ctx)
@@ -171,11 +179,6 @@ fun FeedScreen(
                     }
                 }
             }
-            item {
-                OutlinedButton(onClick = { composing = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.feed_new))
-                }
-            }
             if (stories.isNotEmpty()) item { StoriesRow(net.token, stories, onOpenStory) }
             item { ErrorText(error) }
             if (drifts.isNotEmpty()) {
@@ -184,6 +187,34 @@ fun FeedScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(drifts) { DriftChip(it, net.token, onOpen) }
                     }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !feedAll,
+                        onClick = {
+                            if (feedAll) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                feedAll = false
+                                ChatPrefs.setFeedAll(ctx, false)
+                                posts = emptyList()
+                            }
+                        },
+                        label = { Text(stringResource(R.string.feed_scope_following)) },
+                    )
+                    FilterChip(
+                        selected = feedAll,
+                        onClick = {
+                            if (!feedAll) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                feedAll = true
+                                ChatPrefs.setFeedAll(ctx, true)
+                                posts = emptyList()
+                            }
+                        },
+                        label = { Text(stringResource(R.string.feed_scope_all)) },
+                    )
                 }
             }
             items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
@@ -284,6 +315,43 @@ private fun AudienceOption(selected: Boolean, label: String, onClick: () -> Unit
 }
 
 /** Write a drift and choose who sees it: your followers, or one of your bubbles. */
+/** Change the text of a drift that is still alive; its time and audience stay as they were. */
+@Composable
+fun DriftEditor(net: Net, drift: Drift, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf(drift.text) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.drift_edit_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Field(stringResource(R.string.prof_drift_hint), text, { text = it.take(DRIFT_LIMIT) }, singleLine = false)
+                Muted(stringResource(R.string.prof_count, text.length, DRIFT_LIMIT))
+                ErrorText(error)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && text.isNotBlank() && text.trim() != drift.text,
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        error = ""
+                        val r = net.post("/candy/drift/edit", JSONObject().put("postedAt", drift.postedAt).put("text", text.trim()))
+                        busy = false
+                        if (r.ok) onSaved() else error = r.message(ctx)
+                    }
+                },
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
 @Composable
 fun DriftComposer(net: Net, onDismiss: () -> Unit, onPosted: () -> Unit) {
     val ctx = LocalContext.current

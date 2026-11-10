@@ -374,4 +374,9 @@
     <string name="msg_push_posts">Alerts for tracks and stories (people whose bell is on)</string>
     <string name="prof_bell_off">Notify me about their tracks and stories</string>
     <string name="prof_bell_on">You will be alerted about their new posts (tap to stop)</string>
+    <string name="drift_edit">Edit</string>
+    <string name="drift_edit_title">Edit drift</string>
+    <string name="feed_scope_following">Following</string>
+    <string name="feed_scope_all">Everyone</string>
+    <string name="msg_haptics">App vibration</string>
 </resources>

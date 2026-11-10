@@ -54,7 +54,7 @@ private val NavTabs = listOf(
 /** The bottom bar: a floating pill, with a gold pill behind the tab you are on. */
 @Composable
 fun FloatingNavBar(selected: Int, unread: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberAppHaptic()
     Box(
         modifier
             .fillMaxWidth()

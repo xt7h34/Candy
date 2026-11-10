@@ -55,6 +55,14 @@ object ChatPrefs {
     fun typingStyle(c: Context): String = if (sp(c).getString("typing", "text") == "bubble") "bubble" else "text"
     fun setTypingStyle(c: Context, v: String) = sp(c).edit().putString("typing", v).apply()
 
+    /** The little taps the app gives (on a like, a tab, a send...). On by default. */
+    fun haptics(c: Context): Boolean = sp(c).getBoolean("haptics", true)
+    fun setHaptics(c: Context, on: Boolean) = sp(c).edit().putBoolean("haptics", on).apply()
+
+    /** Whether the tracks feed shows everyone's tracks (true) or only the people you follow (false, the default). */
+    fun feedAll(c: Context): Boolean = sp(c).getBoolean("feed_all", false)
+    fun setFeedAll(c: Context, on: Boolean) = sp(c).edit().putBoolean("feed_all", on).apply()
+
     /** Where the little eye (the other person read my last message) shows: "list" at the end of the chat's row in the inbox, or "chat" under the message. */
     fun seenPlace(c: Context): String = if (sp(c).getString("seen_place", "list") == "chat") "chat" else "list"
     fun setSeenPlace(c: Context, v: String) = sp(c).edit().putString("seen_place", v).apply()
@@ -145,6 +153,7 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
     var menu by remember { mutableStateOf(ChatPrefs.menuStyle(ctx)) }
     var typing by remember { mutableStateOf(ChatPrefs.typingStyle(ctx)) }
     var seenPlace by remember { mutableStateOf(ChatPrefs.seenPlace(ctx)) }
+    var hapticsOn by remember { mutableStateOf(ChatPrefs.haptics(ctx)) }
     var flowEmoji by remember { mutableStateOf(ChatPrefs.flowEmoji(ctx)) }
     var flareEmoji by remember { mutableStateOf(ChatPrefs.flareEmoji(ctx)) }
     var flowCustom by remember { mutableStateOf("") }
@@ -202,6 +211,22 @@ fun MessageSettingsDialog(net: Net, onDismiss: () -> Unit) {
                 ChoiceRow(seenPlace == "chat", stringResource(R.string.msg_seen_place_chat)) {
                     seenPlace = "chat"
                     ChatPrefs.setSeenPlace(ctx, "chat")
+                }
+                Spacer(Modifier.padding(top = 8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.msg_haptics), Modifier.weight(1f))
+                    Switch(
+                        checked = hapticsOn,
+                        onCheckedChange = { on ->
+                            hapticsOn = on
+                            ChatPrefs.setHaptics(ctx, on)
+                            if (on) Haptics.tap(ctx)
+                        },
+                    )
                 }
                 Spacer(Modifier.padding(top = 8.dp))
                 SectionTitle(stringResource(R.string.msg_flow_emoji))

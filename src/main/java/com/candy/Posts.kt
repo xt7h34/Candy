@@ -327,7 +327,7 @@ object PostImagePrep {
 @Composable
 fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int) {
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberAppHaptic()
     var liked by remember(postId) { mutableStateOf(initialLiked) }
     var likes by remember(postId) { mutableStateOf(initialLikes) }
 

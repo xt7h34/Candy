@@ -306,7 +306,7 @@ fun ProfileScreen(
                     MutualCircles(net, mutuals) { onMutuals(u.hash) }
                 }
                 if (!u.isMe) {
-                    val haptic = LocalHapticFeedback.current
+                    val haptic = rememberAppHaptic()
                     // the bell: a notification for every new track, loop or story from this person (only for people you follow)
                     var bell by remember(u.hash) { mutableStateOf(false) }
                     LaunchedEffect(u.hash, u.followedByMe) {

@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -240,6 +241,8 @@ fun ChatsScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var composingDrift by remember { mutableStateOf(false) }
+    var myDrifts by remember { mutableStateOf<List<Drift>>(emptyList()) }     // my drifts that are still alive
+    var editingDrift by remember { mutableStateOf<Drift?>(null) }
     var tick by remember { mutableStateOf(0) }
 
     fun parseThreads(arr: org.json.JSONArray?): List<ChatThread> {
@@ -277,12 +280,13 @@ fun ChatsScreen(
     }
 
     PollingEffect(Triple(refreshKey, tick, Events.dmTick), { if (Events.connected) 60_000L else 30_000L }) {
-        // the three lists are independent, so they are asked for together instead of one after the other
-        val (r, f, fl) = coroutineScope {
+        // the lists are independent, so they are asked for together instead of one after the other
+        val (r, f, fl, me) = coroutineScope {
             val a = async { net.get("/candy/dm/inbox") }
             val b = async { net.get("/candy/flows") }
             val c = async { net.get("/candy/flares") }
-            Triple(a.await(), b.await(), c.await())
+            val d = async { net.get("/candy/me") }
+            listOf(a.await(), b.await(), c.await(), d.await())
         }
         loading = false
         if (r.ok) {
@@ -293,6 +297,7 @@ fun ChatsScreen(
         }
         if (f.ok) flows = f.body?.optJSONArray("flows").toFlows()
         if (fl.ok) flareFriends = fl.body?.optJSONArray("friends").toFlareFriends()
+        if (me.ok) myDrifts = me.body?.optJSONArray("drifts").toDrifts()
     }
 
     fun answer(path: String, hash: String) {
@@ -306,7 +311,22 @@ fun ChatsScreen(
         DriftComposer(
             net = net,
             onDismiss = { composingDrift = false },
-            onPosted = { composingDrift = false },
+            onPosted = {
+                composingDrift = false
+                tick++
+            },
+        )
+    }
+    val toEdit = editingDrift
+    if (toEdit != null) {
+        DriftEditor(
+            net = net,
+            drift = toEdit,
+            onDismiss = { editingDrift = null },
+            onSaved = {
+                editingDrift = null
+                tick++
+            },
         )
     }
 
@@ -315,10 +335,20 @@ fun ChatsScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // a new drift is one tap away, right above the chats
+        // my drifts that are alive (tap Edit to change the text) and a new drift, right above the chats
         item {
-            OutlinedButton(onClick = { composingDrift = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text(stringResource(R.string.feed_new))
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (d in myDrifts) {
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("💭 " + d.text, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            TextButton(onClick = { editingDrift = d }) { Text(stringResource(R.string.drift_edit)) }
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { composingDrift = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feed_new))
+                }
             }
         }
         item { ErrorText(error) }
@@ -514,7 +544,7 @@ fun ChatScreen(
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var tempCounter by remember { mutableStateOf(0) }       // numbers for messages shown before the bot has answered (negative: they never clash with real ones)
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberAppHaptic()
     var lastTypingSent by remember { mutableStateOf(0L) }
     val listState = rememberLazyListState()
     var selected by remember { mutableStateOf<ChatMsg?>(null) }

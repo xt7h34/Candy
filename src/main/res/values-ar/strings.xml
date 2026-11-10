@@ -374,4 +374,9 @@
     <string name="msg_push_posts">تنبيهات التراكات والستوريز (للي فعّلت جرسهم)</string>
     <string name="prof_bell_off">نبّهني بتراكاته وستوريزه</string>
     <string name="prof_bell_on">هيجيلك تنبيه بجديده (اضغط للإلغاء)</string>
+    <string name="drift_edit">تعديل</string>
+    <string name="drift_edit_title">تعديل الدريفت</string>
+    <string name="feed_scope_following">المتابَعين</string>
+    <string name="feed_scope_all">الكل</string>
+    <string name="msg_haptics">اهتزاز التطبيق</string>
 </resources>
