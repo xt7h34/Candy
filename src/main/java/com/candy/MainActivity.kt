@@ -57,8 +57,14 @@ class MainActivity : ComponentActivity() {
     /** A chat to open, because a notification was tapped. */
     private var openChat by mutableStateOf<String?>(null)
 
+    override fun attachBaseContext(newBase: Context) {
+        // the language you picked in Accessibility
+        super.attachBaseContext(AppPrefs.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppPrefs.init(this)
         enableEdgeToEdge()
         handoff = handoffCode(intent)
         openChat = intent.getStringExtra(Push.EXTRA_CHAT) ?: intent.getStringExtra(Push.EXTRA_PROFILE)?.let { "@profile:" + it }
@@ -215,6 +221,11 @@ sealed class Dest {
     class LoopPlayer(val hash: String, val startId: String) : Dest()
     class FlareView(val hash: String) : Dest()
     object Memories : Dest()
+    object Settings : Dest()
+    object KanadeAccount : Dest()
+    object Subscriptions : Dest()
+    object ManageAccount : Dest()
+    object Accessibility : Dest()
 }
 
 @Composable
@@ -479,6 +490,28 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                             Dest.Bubbles -> BubblesScreen(net, back)
                             Dest.Visits -> VisitsScreen(net, back, ::openProfile)
                             Dest.Growth -> GrowthScreen(net, back)
+                            Dest.Settings -> SettingsScreen(
+                                net = net,
+                                onBack = back,
+                                onKanadeAccount = { stack.add(Dest.KanadeAccount) },
+                                onMemories = { stack.add(Dest.Memories) },
+                                onBubbles = { stack.add(Dest.Bubbles) },
+                                onAccessibility = { stack.add(Dest.Accessibility) },
+                                onSignOut = onSignOut,
+                            )
+                            Dest.KanadeAccount -> KanadeAccountScreen(
+                                onBack = back,
+                                onSubscriptions = { stack.add(Dest.Subscriptions) },
+                                onManage = { stack.add(Dest.ManageAccount) },
+                            )
+                            Dest.Subscriptions -> SubscriptionScreen(net, back)
+                            Dest.ManageAccount -> ManageAccountScreen(
+                                net = net,
+                                onBack = back,
+                                onVisits = { stack.add(Dest.Visits) },
+                                onGrowth = { stack.add(Dest.Growth) },
+                            )
+                            Dest.Accessibility -> AccessibilityScreen(back)
                             is Dest.Story, Dest.Camera, Dest.StageEdit, Dest.LoopEdit, Dest.FlareEdit,
                             is Dest.LoopPlayer, is Dest.FlareView -> {}
                         }
@@ -516,15 +549,11 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                             else -> MeScreen(
                                 net = net,
                                 onUsers = { stack.add(Dest.Users(it)) },
-                                onBubbles = { stack.add(Dest.Bubbles) },
-                                onVisits = { stack.add(Dest.Visits) },
-                                onGrowth = { stack.add(Dest.Growth) },
-                                onSignOut = onSignOut,
+                                onOpenSettings = { stack.add(Dest.Settings) },
                                 refreshKey = refreshTick,
                                 onOpenPost = { stack.add(Dest.OpenPost(it)) },
                                 onNewStage = { openCamera("stage") },
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
-                                onMemories = { stack.add(Dest.Memories) },
                             )
                         }
                     }

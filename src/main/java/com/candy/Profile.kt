@@ -446,15 +446,11 @@ private fun VibeDialog(initial: String, max: Int, onSave: (String) -> Unit, onCl
 fun MeScreen(
     net: Net,
     onUsers: (String) -> Unit,
-    onBubbles: () -> Unit,
-    onVisits: () -> Unit,
-    onGrowth: () -> Unit,
-    onSignOut: () -> Unit,
+    onOpenSettings: () -> Unit,
     refreshKey: Int,
     onOpenPost: (String) -> Unit,
     onNewStage: () -> Unit,
     onOpenLoop: (String, String) -> Unit,
-    onMemories: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -464,7 +460,6 @@ fun MeScreen(
     var editingVibe by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(false) }
     var editingDrift by remember { mutableStateOf<Drift?>(null) }
-    var msgSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(reload, refreshKey) {
         val r = net.get("/candy/me")
@@ -476,6 +471,7 @@ fun MeScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val data = me
         if (data == null) {
@@ -512,68 +508,7 @@ fun MeScreen(
 
                 PostsSection(net, null, reload + refreshKey, onOpenPost)
 
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedButton(onClick = onBubbles, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.prof_bubbles))
-                    }
-                    OutlinedButton(onClick = onVisits, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.prof_visits))
-                    }
-                    OutlinedButton(onClick = onGrowth, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.prof_growth))
-                    }
-                    OutlinedButton(onClick = onMemories, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text("🗂️  " + stringResource(R.string.mem_title))
-                    }
-                }
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(stringResource(R.string.prof_show_join))
-                    Switch(
-                        checked = data.optBoolean("showJoinDate", true),
-                        onCheckedChange = { on ->
-                            scope.launch {
-                                val r = net.post("/candy/joindate", JSONObject().put("visible", on))
-                                if (r.ok) reload++ else error = r.message(ctx)
-                            }
-                        },
-                    )
-                }
-
-                OutlinedButton(onClick = { msgSettings = true }, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.msg_settings_title))
-                }
-                if (msgSettings) MessageSettingsDialog(net) { msgSettings = false }
-
-                val loc = data.optJSONObject("location")
-                if (loc != null) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(stringResource(R.string.prof_show_location, loc.optString("text")), Modifier.weight(1f))
-                        Switch(
-                            checked = loc.optBoolean("visible", true),
-                            onCheckedChange = { on ->
-                                scope.launch {
-                                    val r = net.post("/candy/location/visibility", JSONObject().put("visible", on))
-                                    if (r.ok) reload++ else error = r.message(ctx)
-                                }
-                            },
-                        )
-                    }
-                } else {
-                    Muted(stringResource(R.string.prof_location_hint))
-                }
-
                 UpdateSection()
-
-                TextButton(onClick = onSignOut) { Text(stringResource(R.string.prof_signout)) }
 
                 if (editingVibe) {
                     VibeDialog(
@@ -614,5 +549,7 @@ fun MeScreen(
                 }
             }
         }
+    }
+    SettingsMenuButton(onClick = onOpenSettings, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
     }
 }
