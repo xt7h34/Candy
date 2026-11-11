@@ -156,7 +156,7 @@
     <string name="stage_add_text">أضف كلام</string>
     <string name="stage_text_hint">اكتب حاجة</string>
     <string name="stage_uploading">بنرفع... %1$d%%</string>
-    <string name="stage_video_big">الفيديو كبير أو طويل (لحد 25 ميجا و30 ثانية).</string>
+    <string name="stage_video_big">الفيديو طويل أوي (لحد 30 ثانية)، أو كبير ومعرفتش أصغّره.</string>
     <string name="chats_title">الرسايل</string>
     <string name="chats_empty">مفيش محادثات لسه. افتح بروفايل ودوس رسالة.</string>
     <string name="chat_hint">اكتب رسالة</string>
@@ -379,4 +379,5 @@
     <string name="feed_scope_following">المتابَعين</string>
     <string name="feed_scope_all">الكل</string>
     <string name="msg_haptics">اهتزاز التطبيق</string>
+    <string name="stage_preparing">بجهّز الفيديو عشان يترفع أسرع…</string>
 </resources>

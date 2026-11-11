@@ -35,8 +35,8 @@ android {
         applicationId = "com.candy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.25"
+        versionCode = 26
+        versionName = "1.26"
         // Where the app looks for newer versions. The build passes it in (-PupdateRepo=owner/name).
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: ""}\"")
         // Public address of the Kanade bot (the tunnel), one line in api-url.txt at the repo root.
@@ -100,4 +100,7 @@ dependencies {
     // video that plays while it downloads, with a cache on the phone (loops and stories)
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
+    // makes a video lighter on the phone before it is sent
+    implementation("androidx.media3:media3-transformer:1.5.1")
+    implementation("androidx.media3:media3-effect:1.5.1")
 }

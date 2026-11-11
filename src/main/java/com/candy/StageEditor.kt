@@ -95,7 +95,7 @@ private fun videoLooksOk(c: android.content.Context, uri: Uri): Boolean = try {
     try {
         mmr.setDataSource(c, uri)
         val ms = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        size in 1..VIDEO_MAX_BYTES && ms in 1..(VIDEO_MAX_MS + 500)
+        size > 0 && ms in 1..(VIDEO_MAX_MS + 500)       // the size no longer matters here: the video is made lighter before it is sent
     } finally {
         mmr.release()
     }
@@ -148,6 +148,7 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
     var editing by remember { mutableStateOf(-1) }       // -1 none, -2 a new text, otherwise the index
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
+    var preparing by remember { mutableStateOf(false) }      // the video is being made lighter before it is sent
     var error by remember { mutableStateOf("") }
     var caption by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
@@ -213,21 +214,35 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                     return@launch
                 }
                 val cover = withContext(Dispatchers.IO) { videoCover(ctx, picked.uri) }
-                val length = withContext(Dispatchers.IO) { ctx.contentResolver.openAssetFileDescriptor(picked.uri, "r")?.use { it.length } ?: 0L }
-                val input = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(picked.uri) }
-                if (cover == null || input == null || length <= 0) {
-                    busy = false
-                    error = ctx.getString(R.string.avatar_unreadable)
-                    return@launch
+                // lighter copy first (null = it is already small, or it could not be done: then the original is sent as it is)
+                preparing = true
+                val small = VideoPrep.compress(ctx, picked.uri)
+                preparing = false
+                try {
+                    val length = if (small != null) small.length() else withContext(Dispatchers.IO) { ctx.contentResolver.openAssetFileDescriptor(picked.uri, "r")?.use { it.length } ?: 0L }
+                    val input = withContext(Dispatchers.IO) { if (small != null) small.inputStream() else ctx.contentResolver.openInputStream(picked.uri) }
+                    if (cover == null || input == null || length <= 0) {
+                        busy = false
+                        error = ctx.getString(R.string.avatar_unreadable)
+                        return@launch
+                    }
+                    if (length > VIDEO_MAX_BYTES) {
+                        input.close()
+                        busy = false
+                        error = ctx.getString(R.string.stage_video_big)
+                        return@launch
+                    }
+                    val up = input.use { CandyApi.uploadVideo(net.token, it, length) { p -> progress = p } }
+                    val id = up.body?.optString("id").orEmpty()
+                    if (!up.ok || id.isEmpty()) {
+                        busy = false
+                        error = up.message(ctx)
+                        return@launch
+                    }
+                    body.put("video", id).put("image", Base64.encodeToString(cover, Base64.NO_WRAP))
+                } finally {
+                    small?.delete()
                 }
-                val up = input.use { CandyApi.uploadVideo(net.token, it, length) { p -> progress = p } }
-                val id = up.body?.optString("id").orEmpty()
-                if (!up.ok || id.isEmpty()) {
-                    busy = false
-                    error = up.message(ctx)
-                    return@launch
-                }
-                body.put("video", id).put("image", Base64.encodeToString(cover, Base64.NO_WRAP))
             } else {
                 val jpeg = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, picked.uri) }
                 if (jpeg == null) {
@@ -320,7 +335,10 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (saved) Text(stringResource(R.string.mem_saved), color = Color.White, style = MaterialTheme.typography.labelMedium)
-            if (busy && picked.isVideo) {
+            if (busy && picked.isVideo && preparing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.stage_preparing), color = Color.White)
+            } else if (busy && picked.isVideo) {
                 LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.stage_uploading, (progress * 100).toInt()), color = Color.White)
             } else if (busy) {

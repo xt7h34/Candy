@@ -156,7 +156,7 @@
     <string name="stage_add_text">Add text</string>
     <string name="stage_text_hint">Type something</string>
     <string name="stage_uploading">Uploading... %1$d%%</string>
-    <string name="stage_video_big">This video is too big or too long (up to 25 MB and 30 seconds).</string>
+    <string name="stage_video_big">The video is too long (30 seconds at most), or too big to make smaller.</string>
     <string name="chats_title">Messages</string>
     <string name="chats_empty">No conversations yet. Open a profile and tap Message.</string>
     <string name="chat_hint">Message</string>
@@ -379,4 +379,5 @@
     <string name="feed_scope_following">Following</string>
     <string name="feed_scope_all">Everyone</string>
     <string name="msg_haptics">App vibration</string>
+    <string name="stage_preparing">Getting the video ready so it uploads faster…</string>
 </resources>
