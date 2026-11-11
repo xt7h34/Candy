@@ -77,8 +77,9 @@ fun LoopsScreen(
 
     suspend fun load(before: Long?) {
         loading = true
-        val q = StringBuilder("/candy/loops?")
-        if (hash != null) q.append("hash=").append(Uri.encode(bareHash(hash))).append('&')
+        // "@saved" plays the loops you saved, in the order you saved them
+        val q = StringBuilder(if (hash == "@saved") "/candy/saved?kind=loop&" else "/candy/loops?")
+        if (hash != null && hash != "@saved") q.append("hash=").append(Uri.encode(bareHash(hash))).append('&')
         if (before != null) q.append("before=").append(before)
         val r = net.get(q.toString())
         loading = false
@@ -237,6 +238,7 @@ private fun LoopPage(
             LikeButton(net, loop.id, loop.liked, loop.likes)
             TextButton(onClick = { onOpenComments(loop.id) }) { Text("💬 " + loop.comments) }
             TextButton(onClick = { sending = true }) { Text("📨") }
+            SaveButton(net, loop.id, loop.saved, Color.White)
             Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
         }
 

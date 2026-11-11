@@ -22,6 +22,32 @@
     <string name="set_lang_ar">العربية</string>
     <string name="set_lang_en">English</string>
     <string name="set_signout_confirm">تسجل خروج من الحساب ده؟</string>
+    <!-- Saved, privacy, blocks (1.30) -->
+    <string name="set_saved">المحفوظات</string>
+    <string name="set_privacy">خصوصية الحساب</string>
+    <string name="set_blocks">المحظورين</string>
+    <string name="save_desc">حفظ</string>
+    <string name="saved_tracks">التراكات</string>
+    <string name="saved_loops">اللوبات</string>
+    <string name="saved_empty">مفيش حاجة محفوظة لسه. دوس على علامة الحفظ في أي تراك أو لوب.</string>
+    <string name="privacy_public">حساب عام</string>
+    <string name="privacy_public_desc">أي حد يقدر يتابعك ويشوف تراكاتك ولوباتك وستيجاتك.</string>
+    <string name="privacy_private">حساب خاص</string>
+    <string name="privacy_private_desc">بس اللي توافق عليهم يشوفوا تراكاتك ولوباتك وستيجاتك. أي حد عايز يتابعك لازم يبعتلك طلب الأول.</string>
+    <string name="privacy_requests">طلبات المتابعة</string>
+    <string name="privacy_no_requests">مفيش طلبات دلوقتي.</string>
+    <string name="privacy_accept">قبول</string>
+    <string name="privacy_decline">رفض</string>
+    <string name="blocks_empty">انت ما حظرتش حد.</string>
+    <string name="prof_requested">تم إرسال الطلب</string>
+    <string name="prof_request_sent">اتبعت طلب المتابعة. هتقدر تبعت رسايل أكتر لما يقبل.</string>
+    <string name="prof_private_note">الحساب ده خاص</string>
+    <string name="prof_private_hint">تابع الحساب ده عشان تشوف تراكاته ولوباته وستيجاته.</string>
+    <string name="prof_block">حظر</string>
+    <string name="prof_unblock">إلغاء الحظر</string>
+    <string name="prof_blocked_note">انت حاظر الحساب ده.</string>
+    <string name="prof_block_title">تحظر %1$s؟</string>
+    <string name="prof_block_text">مش هيلاقي بروفايلك ولا تراكاتك ولوباتك وستيجاتك، وهتتشالوا من متابعة بعض.</string>
     <!-- Kanade Subscription (same texts as the Kanade app) -->
     <string name="sub_left_hm">%1$d س %2$d د</string>
     <string name="sub_left_dh">%1$d ي %2$d س</string>

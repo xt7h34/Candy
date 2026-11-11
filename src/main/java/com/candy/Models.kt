@@ -19,6 +19,10 @@ class CUser(
     val followsMe: Boolean,
     val posts: Int = 0,
     val verified: Boolean = false,
+    val isPrivate: Boolean = false,
+    val requestedByMe: Boolean = false,
+    val locked: Boolean = false,
+    val blockedByMe: Boolean = false,
 )
 
 fun JSONObject.toUser() = CUser(
@@ -33,6 +37,10 @@ fun JSONObject.toUser() = CUser(
     followsMe = optBoolean("followsMe"),
     posts = optInt("posts"),
     verified = optBoolean("verified"),
+    isPrivate = optBoolean("isPrivate"),
+    requestedByMe = optBoolean("requestedByMe"),
+    locked = optBoolean("locked"),
+    blockedByMe = optBoolean("blockedByMe"),
 )
 
 fun JSONArray?.toUsers(): List<CUser> {
@@ -117,6 +125,7 @@ class Post(
     val sizes: List<Float> = emptyList(),
     val ownerName: String,
     val ownerHash: String,
+    val saved: Boolean = false,
 )
 
 fun JSONObject.toPost(): Post {
@@ -140,6 +149,7 @@ fun JSONObject.toPost(): Post {
         sizes = aspectsOf(optJSONArray("images")),
         ownerName = owner?.optString("name").orEmpty(),
         ownerHash = owner?.optString("hash").orEmpty(),
+        saved = optBoolean("saved"),
     )
 }
 

@@ -1545,7 +1545,10 @@ fun ChatScreen(
                     onClick = {
                         scope.launch {
                             val r = net.post("/candy/follow", JSONObject().put("hash", bareHash(hash)))
-                            if (r.ok) {
+                            if (r.ok && r.body?.optBoolean("requested") == true) {
+                                // a private account: it has to accept first
+                                error = ctx.getString(R.string.prof_request_sent)
+                            } else if (r.ok) {
                                 canSend = true
                                 remaining = null
                                 error = ""

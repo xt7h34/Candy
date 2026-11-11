@@ -286,6 +286,7 @@ fun ProfileScreen(
     var reload by remember { mutableStateOf(0) }
     var reporting by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
+    var confirmBlock by remember { mutableStateOf(false) }
 
     LaunchedEffect(hash, reload) {
         loading = true
@@ -315,6 +316,8 @@ fun ProfileScreen(
         if (error.isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
         val u = user
         if (u != null) {
+            // a private account you do not follow, or someone you blocked: no tracks, loops, stages or drifts
+            val hidden = u.locked || u.blockedByMe
             LoopCards(net, u.hash, reload) { id -> onOpenLoop(u.hash, id) }
             Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
                 Avatar(u.hash, net.token, 96.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
@@ -346,19 +349,42 @@ fun ProfileScreen(
                         scope.launch {
                             busy = true
                             error = ""
-                            val path = if (u.followedByMe) "/candy/unfollow" else "/candy/follow"
+                            val path = if (u.followedByMe || u.requestedByMe) "/candy/unfollow" else "/candy/follow"
                             val r = net.post(path, JSONObject().put("hash", bareHash(u.hash)))
                             busy = false
                             if (r.ok) reload++ else error = r.message(ctx)
                         }
                     }
-                    if (u.followedByMe) {
+                    if (u.blockedByMe) {
+                        Muted(stringResource(R.string.prof_blocked_note))
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    busy = true
+                                    error = ""
+                                    val r = net.post("/candy/unblock", JSONObject().put("hash", bareHash(u.hash)))
+                                    busy = false
+                                    if (r.ok) reload++ else error = r.message(ctx)
+                                }
+                            },
+                            enabled = !busy,
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.prof_unblock)) }
+                    } else if (u.followedByMe) {
                         OutlinedButton(
                             onClick = toggle,
                             enabled = !busy,
                             shape = CircleShape,
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(stringResource(R.string.prof_unfollow)) }
+                    } else if (u.requestedByMe) {
+                        OutlinedButton(
+                            onClick = toggle,
+                            enabled = !busy,
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.prof_requested)) }
                     } else {
                         Button(
                             onClick = toggle,
@@ -385,20 +411,62 @@ fun ProfileScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(if (bell) "🔔 " + stringResource(R.string.prof_bell_on) else "🔕 " + stringResource(R.string.prof_bell_off)) }
                     }
-                    OutlinedButton(
-                        onClick = { onMessage(u.hash) },
-                        shape = CircleShape,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.prof_message)) }
-                    TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.post_report)) }
+                    if (!u.blockedByMe) {
+                        OutlinedButton(
+                            onClick = { onMessage(u.hash) },
+                            shape = CircleShape,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.prof_message)) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.post_report)) }
+                        if (!u.blockedByMe) {
+                            TextButton(onClick = { confirmBlock = true }) {
+                                Text(stringResource(R.string.prof_block), color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
                     if (notice.isNotEmpty()) Muted(notice)
                 }
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionTitle(stringResource(R.string.prof_drifts))
-                    if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
-                    for (d in drifts) DriftCard(d, net.token, null)
+                if (u.locked && !u.blockedByMe) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("🔒", style = MaterialTheme.typography.headlineMedium)
+                        Text(stringResource(R.string.prof_private_note), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Muted(stringResource(R.string.prof_private_hint))
+                    }
                 }
-                PostsSection(net, u.hash, reload, onOpenPost)
+                if (!hidden) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SectionTitle(stringResource(R.string.prof_drifts))
+                        if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
+                        for (d in drifts) DriftCard(d, net.token, null)
+                    }
+                    PostsSection(net, u.hash, reload, onOpenPost)
+                }
+                if (confirmBlock) {
+                    AlertDialog(
+                        onDismissRequest = { confirmBlock = false },
+                        title = { Text(stringResource(R.string.prof_block_title, u.name.ifBlank { u.hash })) },
+                        text = { Text(stringResource(R.string.prof_block_text)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmBlock = false
+                                scope.launch {
+                                    busy = true
+                                    error = ""
+                                    val r = net.post("/candy/block", JSONObject().put("hash", bareHash(u.hash)))
+                                    busy = false
+                                    if (r.ok) reload++ else error = r.message(ctx)
+                                }
+                            }) { Text(stringResource(R.string.prof_block), color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = { TextButton(onClick = { confirmBlock = false }) { Text(stringResource(R.string.cancel)) } },
+                    )
+                }
                 if (reporting) {
                     ReportDialog(
                         onSend = { reason ->

@@ -226,6 +226,9 @@ sealed class Dest {
     object Subscriptions : Dest()
     object ManageAccount : Dest()
     object Accessibility : Dest()
+    object Saved : Dest()
+    object AccountPrivacy : Dest()
+    object Blocks : Dest()
 }
 
 @Composable
@@ -494,8 +497,11 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 net = net,
                                 onBack = back,
                                 onKanadeAccount = { stack.add(Dest.KanadeAccount) },
+                                onSaved = { stack.add(Dest.Saved) },
                                 onMemories = { stack.add(Dest.Memories) },
+                                onPrivacy = { stack.add(Dest.AccountPrivacy) },
                                 onBubbles = { stack.add(Dest.Bubbles) },
+                                onBlocks = { stack.add(Dest.Blocks) },
                                 onAccessibility = { stack.add(Dest.Accessibility) },
                                 onSignOut = onSignOut,
                             )
@@ -512,6 +518,14 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onGrowth = { stack.add(Dest.Growth) },
                             )
                             Dest.Accessibility -> AccessibilityScreen(back)
+                            Dest.Saved -> SavedScreen(
+                                net = net,
+                                onBack = back,
+                                onOpenPost = { stack.add(Dest.OpenPost(it)) },
+                                onOpenLoop = { stack.add(Dest.LoopPlayer("@saved", it)) },
+                            )
+                            Dest.AccountPrivacy -> AccountPrivacyScreen(net, back, ::openProfile)
+                            Dest.Blocks -> BlocksScreen(net, back, ::openProfile)
                             is Dest.Story, Dest.Camera, Dest.StageEdit, Dest.LoopEdit, Dest.FlareEdit,
                             is Dest.LoopPlayer, is Dest.FlareView -> {}
                         }

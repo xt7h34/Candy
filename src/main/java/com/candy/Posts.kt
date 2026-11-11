@@ -1,5 +1,11 @@
 package com.candy
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.content.Context
@@ -350,6 +356,43 @@ fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: In
     ) { Text((if (liked) "❤️" else "🤍") + " " + likes) }
 }
 
+/** The bookmark: saves a track or a loop so it shows in Settings > Saved. */
+@Composable
+fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = MaterialTheme.colorScheme.primary) {
+    val scope = rememberCoroutineScope()
+    val haptic = rememberAppHaptic()
+    var saved by remember(postId) { mutableStateOf(initialSaved) }
+    val desc = stringResource(R.string.save_desc)
+
+    TextButton(
+        onClick = {
+            val want = !saved
+            saved = want
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            scope.launch {
+                val r = net.post("/candy/save", JSONObject().put("id", postId).put("saved", want))
+                if (!r.ok) saved = !want
+            }
+        },
+        modifier = Modifier.semantics { contentDescription = desc },
+    ) {
+        Canvas(Modifier.size(width = 15.dp, height = 20.dp)) {
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(w * 0.08f, h * 0.04f)
+                lineTo(w * 0.92f, h * 0.04f)
+                lineTo(w * 0.92f, h * 0.96f)
+                lineTo(w * 0.5f, h * 0.7f)
+                lineTo(w * 0.08f, h * 0.96f)
+                close()
+            }
+            if (saved) drawPath(path, tint)
+            drawPath(path, tint, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round))
+        }
+    }
+}
+
 /**
  * A track in the feed: who and when, the picture, the caption, then like and comment.
  * [onComments] opens the comments sheet; it defaults to [onOpenPost] for screens that do not need the sheet.
@@ -410,6 +453,9 @@ fun PostCard(
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     TextButton(onClick = { sharing = true }) { Text("📨") }
                 }
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    SaveButton(net, post.id, post.saved)
+                }
             }
         }
     }
@@ -433,6 +479,32 @@ private fun TextTile(p: Post, modifier: Modifier = Modifier) {
             maxLines = 7,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/** Saved tracks or loops as a grid of squares. */
+@Composable
+fun SavedGrid(net: Net, posts: List<Post>, loops: Boolean, onOpen: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (row in posts.chunked(3)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (p in row) {
+                    if (p.hasImage) {
+                        Box(Modifier.weight(1f).clickable { onOpen(p.id) }) {
+                            PostImage(p.id, net.token, true, 1f)
+                            if (loops) {
+                                PicBadge("▶", Modifier.align(Alignment.TopEnd).padding(4.dp))
+                            } else if (p.imageCount > 1) {
+                                PicBadge("🖼️ " + p.imageCount, Modifier.align(Alignment.TopEnd).padding(4.dp))
+                            }
+                        }
+                    } else {
+                        TextTile(p, Modifier.weight(1f).clickable { onOpen(p.id) })
+                    }
+                }
+                for (i in row.size until 3) Spacer(Modifier.weight(1f))
+            }
+        }
     }
 }
 
@@ -749,6 +821,9 @@ fun PostScreen(
                             }
                             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                                 TextButton(onClick = { sharing = true }) { Text("📨") }
+                            }
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                SaveButton(net, p.id, p.saved)
                             }
                         }
                     }

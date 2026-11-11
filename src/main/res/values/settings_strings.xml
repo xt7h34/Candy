@@ -22,6 +22,32 @@
     <string name="set_lang_ar">العربية</string>
     <string name="set_lang_en">English</string>
     <string name="set_signout_confirm">Sign out of this account?</string>
+    <!-- Saved, privacy, blocks (1.30) -->
+    <string name="set_saved">Saved</string>
+    <string name="set_privacy">Account Privacy</string>
+    <string name="set_blocks">Blocks</string>
+    <string name="save_desc">Save</string>
+    <string name="saved_tracks">Tracks</string>
+    <string name="saved_loops">Loops</string>
+    <string name="saved_empty">Nothing saved yet. Tap the bookmark on a track or a loop.</string>
+    <string name="privacy_public">Public account</string>
+    <string name="privacy_public_desc">Anyone can follow you and see your tracks, loops and stages.</string>
+    <string name="privacy_private">Private account</string>
+    <string name="privacy_private_desc">Only people you accept can see your tracks, loops and stages. Anyone who wants to follow you sends a request first.</string>
+    <string name="privacy_requests">Follow requests</string>
+    <string name="privacy_no_requests">No requests right now.</string>
+    <string name="privacy_accept">Accept</string>
+    <string name="privacy_decline">Decline</string>
+    <string name="blocks_empty">You have not blocked anyone.</string>
+    <string name="prof_requested">Requested</string>
+    <string name="prof_request_sent">Follow request sent. You can message more once they accept.</string>
+    <string name="prof_private_note">This account is private</string>
+    <string name="prof_private_hint">Follow this account to see their tracks, loops and stages.</string>
+    <string name="prof_block">Block</string>
+    <string name="prof_unblock">Unblock</string>
+    <string name="prof_blocked_note">You blocked this account.</string>
+    <string name="prof_block_title">Block %1$s?</string>
+    <string name="prof_block_text">They will not find your profile, tracks, loops or stages, and you will stop following each other.</string>
     <!-- Kanade Subscription (same texts as the Kanade app) -->
     <string name="sub_left_hm">%1$dh %2$dm</string>
     <string name="sub_left_dh">%1$dd %2$dh</string>

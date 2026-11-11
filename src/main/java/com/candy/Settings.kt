@@ -186,8 +186,11 @@ fun SettingsScreen(
     net: Net,
     onBack: () -> Unit,
     onKanadeAccount: () -> Unit,
+    onSaved: () -> Unit,
     onMemories: () -> Unit,
+    onPrivacy: () -> Unit,
     onBubbles: () -> Unit,
+    onBlocks: () -> Unit,
     onAccessibility: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -208,9 +211,12 @@ fun SettingsScreen(
             GroupDivider()
 
             GroupLabel(stringResource(R.string.set_how_use))
+            SettingsRow(stringResource(R.string.set_saved), emoji = "🔖", onClick = onSaved)
             SettingsRow(stringResource(R.string.mem_title), emoji = "🗂️", onClick = onMemories)
             SettingsRow(stringResource(R.string.set_messages), emoji = "💬", onClick = { messages = true })
+            SettingsRow(stringResource(R.string.set_privacy), emoji = "🔒", onClick = onPrivacy)
             SettingsRow(stringResource(R.string.prof_bubbles), emoji = "🫧", onClick = onBubbles)
+            SettingsRow(stringResource(R.string.set_blocks), emoji = "🚫", onClick = onBlocks)
             GroupDivider()
 
             GroupLabel(stringResource(R.string.set_more))
@@ -352,6 +358,220 @@ fun AccessibilityScreen(onBack: () -> Unit) {
             ChoiceRow(stringResource(R.string.set_lang_system), AppPrefs.language == "system") { pick("system") }
             ChoiceRow(stringResource(R.string.set_lang_ar), AppPrefs.language == "ar") { pick("ar") }
             ChoiceRow(stringResource(R.string.set_lang_en), AppPrefs.language == "en") { pick("en") }
+            Box(Modifier.height(LocalBarInset.current + 16.dp))
+        }
+    }
+}
+
+// ───────────────────────── Saved ─────────────────────────
+
+/** The tracks and loops you saved with the bookmark. */
+@Composable
+fun SavedScreen(net: Net, onBack: () -> Unit, onOpenPost: (String) -> Unit, onOpenLoop: (String) -> Unit) {
+    val ctx = LocalContext.current
+    var tab by remember { mutableStateOf(0) }
+    var tracks by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var loops by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        val a = net.get("/candy/saved?kind=track")
+        val b = net.get("/candy/saved?kind=loop")
+        loading = false
+        if (a.ok) tracks = a.body?.optJSONArray("items").toPosts() else error = a.message(ctx)
+        if (b.ok) loops = b.body?.optJSONArray("items").toPosts() else error = b.message(ctx)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader(stringResource(R.string.set_saved), onBack)
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.FilterChip(
+                selected = tab == 0,
+                onClick = { tab = 0 },
+                label = { Text(stringResource(R.string.saved_tracks)) },
+            )
+            androidx.compose.material3.FilterChip(
+                selected = tab == 1,
+                onClick = { tab = 1 },
+                label = { Text(stringResource(R.string.saved_loops)) },
+            )
+        }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ErrorText(error)
+            if (loading) Loading()
+            val shown = if (tab == 0) tracks else loops
+            if (!loading && shown.isEmpty() && error.isEmpty()) Muted(stringResource(R.string.saved_empty))
+            if (shown.isNotEmpty()) {
+                SavedGrid(net, shown, loops = tab == 1) { id -> if (tab == 1) onOpenLoop(id) else onOpenPost(id) }
+            }
+            Box(Modifier.height(LocalBarInset.current + 16.dp))
+        }
+    }
+}
+
+// ───────────────────────── Account Privacy ─────────────────────────
+
+/** Public or private, and the requests to follow you while you are private. */
+@Composable
+fun AccountPrivacyScreen(net: Net, onBack: () -> Unit, onOpenProfile: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isPrivate by remember { mutableStateOf<Boolean?>(null) }
+    var requests by remember { mutableStateOf<List<CUser>>(emptyList()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var reload by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reload) {
+        val me = net.get("/candy/me")
+        if (me.ok) isPrivate = me.body?.optBoolean("accountPrivate") == true else error = me.message(ctx)
+        val r = net.get("/candy/requests")
+        if (r.ok) requests = r.body?.optJSONArray("users").toUsers()
+    }
+
+    suspend fun setPrivate(on: Boolean) {
+        busy = true
+        error = ""
+        val r = net.post("/candy/privacy", JSONObject().put("private", on))
+        busy = false
+        if (r.ok) reload++ else error = r.message(ctx)
+    }
+
+    suspend fun answer(u: CUser, accept: Boolean) {
+        busy = true
+        error = ""
+        val r = net.post(if (accept) "/candy/request/accept" else "/candy/request/decline", JSONObject().put("hash", bareHash(u.hash)))
+        busy = false
+        if (r.ok) reload++ else error = r.message(ctx)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader(stringResource(R.string.set_privacy), onBack)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
+            val current = isPrivate
+            if (current != null) {
+                PrivacyChoice(
+                    title = stringResource(R.string.privacy_public),
+                    desc = stringResource(R.string.privacy_public_desc),
+                    selected = !current,
+                ) { if (current && !busy) scope.launch { setPrivate(false) } }
+                PrivacyChoice(
+                    title = stringResource(R.string.privacy_private),
+                    desc = stringResource(R.string.privacy_private_desc),
+                    selected = current,
+                ) { if (!current && !busy) scope.launch { setPrivate(true) } }
+            }
+            GroupDivider()
+            GroupLabel(stringResource(R.string.privacy_requests))
+            if (requests.isEmpty()) Muted(stringResource(R.string.privacy_no_requests), Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            for (u in requests) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        Modifier.weight(1f).clickable { onOpenProfile(u.hash) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Avatar(u.hash, net.token, 44.dp)
+                        Column {
+                            Text(u.name.ifBlank { u.hash }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Muted(u.hash)
+                        }
+                    }
+                    androidx.compose.material3.Button(onClick = { scope.launch { answer(u, true) } }, enabled = !busy) {
+                        Text(stringResource(R.string.privacy_accept))
+                    }
+                    androidx.compose.material3.OutlinedButton(onClick = { scope.launch { answer(u, false) } }, enabled = !busy) {
+                        Text(stringResource(R.string.privacy_decline))
+                    }
+                }
+            }
+            Box(Modifier.height(LocalBarInset.current + 16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PrivacyChoice(title: String, desc: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Muted(desc)
+        }
+    }
+}
+
+// ───────────────────────── Blocks ─────────────────────────
+
+/** The accounts you blocked, with a button to unblock each. */
+@Composable
+fun BlocksScreen(net: Net, onBack: () -> Unit, onOpenProfile: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var users by remember { mutableStateOf<List<CUser>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var reload by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reload) {
+        val r = net.get("/candy/blocks")
+        loading = false
+        if (r.ok) users = r.body?.optJSONArray("users").toUsers() else error = r.message(ctx)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader(stringResource(R.string.set_blocks), onBack)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
+            if (loading) Loading()
+            if (!loading && users.isEmpty() && error.isEmpty()) {
+                Muted(stringResource(R.string.blocks_empty), Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+            }
+            for (u in users) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        Modifier.weight(1f).clickable { onOpenProfile(u.hash) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Avatar(u.hash, net.token, 44.dp)
+                        Column {
+                            Text(u.name.ifBlank { u.hash }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Muted(u.hash)
+                        }
+                    }
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                error = ""
+                                val r = net.post("/candy/unblock", JSONObject().put("hash", bareHash(u.hash)))
+                                busy = false
+                                if (r.ok) reload++ else error = r.message(ctx)
+                            }
+                        },
+                        enabled = !busy,
+                    ) { Text(stringResource(R.string.prof_unblock)) }
+                }
+            }
             Box(Modifier.height(LocalBarInset.current + 16.dp))
         }
     }
