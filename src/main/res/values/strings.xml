@@ -60,6 +60,7 @@
     <string name="prof_clear">Clear</string>
     <string name="prof_drifts">Drifts</string>
     <string name="prof_no_drifts">No drifts right now.</string>
+    <string name="prof_drift_placeholder">Your thoughts go here…</string>
     <string name="prof_post_drift">Post a drift</string>
     <string name="prof_drift_hint">What is on your mind? It disappears after 24 hours.</string>
     <string name="prof_audience">Who can see it?</string>

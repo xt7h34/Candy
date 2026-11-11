@@ -522,7 +522,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onSignOut = onSignOut,
                                 refreshKey = refreshTick,
                                 onOpenPost = { stack.add(Dest.OpenPost(it)) },
-                                onNewPost = { pending = null; stack.add(Dest.NewPost) },
+                                onNewStage = { openCamera("stage") },
                                 onOpenLoop = { h, id -> stack.add(Dest.LoopPlayer(h, id)) },
                                 onMemories = { stack.add(Dest.Memories) },
                             )

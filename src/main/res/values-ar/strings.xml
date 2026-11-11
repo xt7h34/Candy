@@ -60,6 +60,7 @@
     <string name="prof_clear">مسح</string>
     <string name="prof_drifts">الدريفتس</string>
     <string name="prof_no_drifts">مفيش دريفتس دلوقتي.</string>
+    <string name="prof_drift_placeholder">اكتب أفكارك هنا…</string>
     <string name="prof_post_drift">انشر دريفت</string>
     <string name="prof_drift_hint">بتفكر في إيه؟ بيختفي بعد 24 ساعة.</string>
     <string name="prof_audience">مين يقدر يشوفه؟</string>

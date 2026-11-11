@@ -46,6 +46,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.Canvas
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -220,7 +227,7 @@ object AvatarUploader {
 
 /** Your own photo with a button to change it: pick from the gallery, use the WhatsApp photo, or remove it. */
 @Composable
-fun AvatarEditor(net: Net, myHash: String, avatar: JSONObject?, onChanged: () -> Unit) {
+fun AvatarEditor(net: Net, myHash: String, avatar: JSONObject?, onAddStage: (() -> Unit)? = null, onChanged: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
@@ -262,10 +269,37 @@ fun AvatarEditor(net: Net, myHash: String, avatar: JSONObject?, onChanged: () ->
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(
-            myHash, net.token, 96.dp, version,
-            Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable(enabled = !busy) { open = true },
-        )
+        Box {
+            Avatar(
+                myHash, net.token, 96.dp, version,
+                Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable(enabled = !busy) { open = true },
+            )
+            if (onAddStage != null) {
+                // the + on the photo: starts a new stage
+                val ring = MaterialTheme.colorScheme.background
+                val desc = stringResource(R.string.story_new)
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(ring)
+                        .padding(3.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .semantics { contentDescription = desc }
+                        .clickable(enabled = !busy, onClick = onAddStage),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.size(16.dp)) {
+                        val w = 2.2.dp.toPx()
+                        drawLine(Color.Black, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), strokeWidth = w, cap = StrokeCap.Round)
+                        drawLine(Color.Black, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = w, cap = StrokeCap.Round)
+                    }
+                }
+            }
+        }
         TextButton(onClick = { open = true }, enabled = !busy) { Text(stringResource(R.string.avatar_change)) }
         if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         if (error.isNotBlank()) {

@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.widthIn
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -92,6 +94,28 @@ private fun LoopBackdrop(net: Net, id: String) {
                     listOf(Color.Black.copy(alpha = 0.45f), MaterialTheme.colorScheme.background),
                 ),
             ),
+        )
+    }
+}
+
+/** The speech bubble above your photo: your live drift, or a hint. Tap it to write or change the drift. */
+@Composable
+private fun DriftBubble(text: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val has = !text.isNullOrBlank()
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.widthIn(min = 110.dp, max = 230.dp),
+    ) {
+        Text(
+            if (has) text.orEmpty() else stringResource(R.string.prof_drift_placeholder),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            textAlign = TextAlign.Center,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (has) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -428,7 +452,7 @@ fun MeScreen(
     onSignOut: () -> Unit,
     refreshKey: Int,
     onOpenPost: (String) -> Unit,
-    onNewPost: () -> Unit,
+    onNewStage: () -> Unit,
     onOpenLoop: (String, String) -> Unit,
     onMemories: () -> Unit,
 ) {
@@ -439,6 +463,7 @@ fun MeScreen(
     var error by remember { mutableStateOf("") }
     var editingVibe by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(false) }
+    var editingDrift by remember { mutableStateOf<Drift?>(null) }
     var msgSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(reload, refreshKey) {
@@ -459,9 +484,18 @@ fun MeScreen(
             val u = data.toUser()
             val vibeMax = data.optInt("vibeMax", VIBE_LIMIT_FALLBACK)
 
-            LoopCards(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
+            // the drift lives in a bubble above the photo (your newest one that is still alive)
+            val latestDrift = data.optJSONArray("drifts").toDrifts().maxByOrNull { it.postedAt }
+            Box(Modifier.fillMaxWidth()) {
+                LoopCards(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
+                DriftBubble(
+                    text = latestDrift?.text,
+                    onClick = { if (latestDrift != null) editingDrift = latestDrift else composing = true },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp, start = 16.dp, end = 16.dp),
+                )
+            }
             Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
-                AvatarEditor(net, u.hash, data.optJSONObject("avatar")) { reload++ }
+                AvatarEditor(net, u.hash, data.optJSONObject("avatar"), onAddStage = onNewStage) { reload++ }
             }
 
             Column(
@@ -476,21 +510,6 @@ fun MeScreen(
                     Text("✏️  " + stringResource(R.string.prof_edit_vibe))
                 }
 
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionTitle(stringResource(R.string.prof_drifts))
-                    val drifts = data.optJSONArray("drifts").toDrifts()
-                    if (drifts.isEmpty()) Muted(stringResource(R.string.prof_no_drifts))
-                    for (d in drifts) DriftCard(d, net.token, null)
-                    FilledTonalButton(
-                        onClick = { composing = true },
-                        shape = CircleShape,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.prof_post_drift)) }
-                }
-
-                Button(onClick = onNewPost, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.feed_new_post))
-                }
                 PostsSection(net, null, reload + refreshKey, onOpenPost)
 
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -582,6 +601,15 @@ fun MeScreen(
                         net = net,
                         onDismiss = { composing = false },
                         onPosted = { composing = false; reload++ },
+                    )
+                }
+                val toEdit = editingDrift
+                if (toEdit != null) {
+                    DriftEditor(
+                        net = net,
+                        drift = toEdit,
+                        onDismiss = { editingDrift = null },
+                        onSaved = { editingDrift = null; reload++ },
                     )
                 }
             }
