@@ -48,7 +48,7 @@
     <string name="prof_blocked_note">انت حاظر الحساب ده.</string>
     <string name="prof_block_title">تحظر %1$s؟</string>
     <string name="prof_block_text">مش هيلاقي بروفايلك ولا تراكاتك ولوباتك وستيجاتك، وهتتشالوا من متابعة بعض.</string>
-    <!-- Login & security, big decisions (1.31) -->
+    <!-- Login &amp; security, big decisions (1.31) -->
     <string name="sec_title">تسجيل الدخول والأمان</string>
     <string name="sec_contact">معلومات التواصل</string>
     <string name="sec_password">تغيير الباسوورد</string>

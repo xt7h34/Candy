@@ -48,8 +48,8 @@
     <string name="prof_blocked_note">You blocked this account.</string>
     <string name="prof_block_title">Block %1$s?</string>
     <string name="prof_block_text">They will not find your profile, tracks, loops or stages, and you will stop following each other.</string>
-    <!-- Login & security, big decisions (1.31) -->
-    <string name="sec_title">Login & Security</string>
+    <!-- Login &amp; security, big decisions (1.31) -->
+    <string name="sec_title">Login &amp; Security</string>
     <string name="sec_contact">Contact Info</string>
     <string name="sec_password">Change Password</string>
     <string name="sec_key">KanadeKey</string>
