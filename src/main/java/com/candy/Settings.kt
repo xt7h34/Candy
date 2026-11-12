@@ -128,7 +128,7 @@ private fun Chevron() {
 
 /** One row of a settings list: an icon, a title, an optional line under it, and an arrow. */
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     title: String,
     subtitle: String? = null,
     emoji: String? = null,
@@ -158,7 +158,7 @@ private fun SettingsRow(
 }
 
 @Composable
-private fun GroupLabel(text: String) {
+internal fun GroupLabel(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
@@ -169,12 +169,12 @@ private fun GroupLabel(text: String) {
 
 /** The thick line between groups, like in the Instagram settings. */
 @Composable
-private fun GroupDivider() {
+internal fun GroupDivider() {
     Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(6.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh))
 }
 
 @Composable
-private fun KanadeLogo(size: androidx.compose.ui.unit.Dp = 28.dp) {
+internal fun KanadeLogo(size: androidx.compose.ui.unit.Dp = 28.dp) {
     Image(painterResource(R.drawable.kanade_account_logo), contentDescription = null, modifier = Modifier.size(size))
 }
 
@@ -243,11 +243,12 @@ fun SettingsScreen(
 // ───────────────────────── Kanade Account ─────────────────────────
 
 @Composable
-fun KanadeAccountScreen(onBack: () -> Unit, onSubscriptions: () -> Unit, onManage: () -> Unit) {
+fun KanadeAccountScreen(onBack: () -> Unit, onSecurity: () -> Unit, onSubscriptions: () -> Unit, onManage: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.set_kanade_account), onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { KanadeLogo(72.dp) }
+            SettingsRow(stringResource(R.string.sec_title), emoji = "🔐", onClick = onSecurity)
             SettingsRow(stringResource(R.string.set_subscriptions), emoji = "💎", onClick = onSubscriptions)
             SettingsRow(stringResource(R.string.set_manage_account), emoji = "⚙️", onClick = onManage)
             Box(Modifier.height(LocalBarInset.current + 16.dp))
@@ -259,7 +260,7 @@ fun KanadeAccountScreen(onBack: () -> Unit, onSubscriptions: () -> Unit, onManag
 
 /** What used to sit at the bottom of the profile: visitors, growth, join date and location. */
 @Composable
-fun ManageAccountScreen(net: Net, onBack: () -> Unit, onVisits: () -> Unit, onGrowth: () -> Unit) {
+fun ManageAccountScreen(net: Net, onBack: () -> Unit, onVisits: () -> Unit, onGrowth: () -> Unit, onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var me by remember { mutableStateOf<JSONObject?>(null) }
@@ -318,6 +319,8 @@ fun ManageAccountScreen(net: Net, onBack: () -> Unit, onVisits: () -> Unit, onGr
                     Muted(stringResource(R.string.prof_location_hint), Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
             }
+            GroupDivider()
+            AccountDangerSection(net, onSignOut)
             Box(Modifier.height(LocalBarInset.current + 16.dp))
         }
     }

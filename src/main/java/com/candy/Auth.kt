@@ -126,6 +126,46 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                     onClick = { error = ""; step = Step.Register },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.auth_new)) }
+                // a KanadeKey made on this phone: fingerprint instead of typing the password
+                val keyId = remember { KanadeKey.localId(ctx) }
+                if (keyId != null) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                error = ""
+                                val ch = CandyApi.call("/auth/key/challenge", JSONObject().put("keyId", keyId))
+                                val challenge = ch.body?.optString("challenge").orEmpty()
+                                if (!ch.ok || challenge.isEmpty()) {
+                                    busy = false
+                                    error = ch.message(ctx)
+                                    return@launch
+                                }
+                                KanadeKey.sign(
+                                    ctx,
+                                    ctx.getString(R.string.key_prompt),
+                                    ctx.getString(R.string.cancel),
+                                    "kanadekey:$challenge:$keyId".toByteArray(),
+                                    done = { sig ->
+                                        scope.launch {
+                                            val r = CandyApi.call(
+                                                "/auth/key/login",
+                                                JSONObject().put("keyId", keyId).put("challenge", challenge)
+                                                    .put("signature", KanadeKey.b64(sig))
+                                                    .put("device", Build.MODEL).put("app", "candy"),
+                                            )
+                                            busy = false
+                                            finish(r)
+                                        }
+                                    },
+                                    failed = { busy = false },
+                                )
+                            }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.key_signin)) }
+                }
                 ErrorText(error)
                 Muted(stringResource(R.string.auth_from_kanade))
             }

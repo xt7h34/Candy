@@ -229,6 +229,10 @@ sealed class Dest {
     object Saved : Dest()
     object AccountPrivacy : Dest()
     object Blocks : Dest()
+    object LoginSecurity : Dest()
+    object ContactInfo : Dest()
+    object ChangePassword : Dest()
+    object KanadeKeys : Dest()
 }
 
 @Composable
@@ -507,6 +511,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                             )
                             Dest.KanadeAccount -> KanadeAccountScreen(
                                 onBack = back,
+                                onSecurity = { stack.add(Dest.LoginSecurity) },
                                 onSubscriptions = { stack.add(Dest.Subscriptions) },
                                 onManage = { stack.add(Dest.ManageAccount) },
                             )
@@ -516,7 +521,17 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onBack = back,
                                 onVisits = { stack.add(Dest.Visits) },
                                 onGrowth = { stack.add(Dest.Growth) },
+                                onSignOut = onSignOut,
                             )
+                            Dest.LoginSecurity -> LoginSecurityScreen(
+                                onBack = back,
+                                onContact = { stack.add(Dest.ContactInfo) },
+                                onPassword = { stack.add(Dest.ChangePassword) },
+                                onKey = { stack.add(Dest.KanadeKeys) },
+                            )
+                            Dest.ContactInfo -> ContactInfoScreen(net, back)
+                            Dest.ChangePassword -> ChangePasswordScreen(net, back)
+                            Dest.KanadeKeys -> KanadeKeyScreen(net, back)
                             Dest.Accessibility -> AccessibilityScreen(back)
                             Dest.Saved -> SavedScreen(
                                 net = net,
