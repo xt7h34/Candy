@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.Icon
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -216,15 +221,16 @@ fun CameraScreen(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().systemBarsPadding().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            TextButton(onClick = onBack) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge) }
+            AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
             TextButton(onClick = onMemories) {
                 Text("🗂️ " + stringResource(R.string.cam_memories), color = Color.White)
             }
-            TextButton(
-                onClick = {
-                    lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
-                },
-            ) { Text("🔄", style = MaterialTheme.typography.titleLarge) }
+            AppIconButton(
+                Icons.Rounded.FlipCameraAndroid,
+                null,
+                { lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK },
+                tint = Color.White,
+            )
         }
 
         Column(
@@ -253,7 +259,7 @@ fun CameraScreen(
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable { gallery.launch(arrayOf("image/*", "video/*")) },
                             contentAlignment = Alignment.Center,
-                        ) { Text("🖼️", style = MaterialTheme.typography.titleLarge) }
+                        ) { Icon(Icons.Rounded.Image, contentDescription = null, tint = Color.White) }
                     }
                 }
                 Box(

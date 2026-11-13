@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -262,7 +264,7 @@ private fun FanCard(net: Net, post: Post, index: Int, rotation: Float, shift: Dp
                 rotationZ = rotation
                 translationX = shift.toPx()
             }
-            .clip(RoundedCornerShape(22.dp)),
+            .clip(MaterialTheme.shapes.small),
     ) {
         // the front card is the full picture, the two behind it are the small squares
         PostImageFill(post.id, net.token, !front, index, true)
@@ -274,7 +276,7 @@ private fun FanCard(net: Net, post: Post, index: Int, rotation: Float, shift: Dp
 private fun PostPager(net: Net, p: Post) {
     val pager = rememberPagerState(pageCount = { p.imageCount })
     val aspect = (p.sizes.firstOrNull() ?: 1f).coerceIn(0.75f, 1.6f)
-    Box(Modifier.fillMaxWidth().aspectRatio(aspect).clip(RoundedCornerShape(22.dp))) {
+    Box(Modifier.fillMaxWidth().aspectRatio(aspect).clip(MaterialTheme.shapes.small)) {
         HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
             PostImageFill(p.id, net.token, false, page, false)
         }
@@ -688,7 +690,7 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     photos.forEachIndexed { i, ph ->
-                        Box(Modifier.size(if (photos.size == 1) 240.dp else 120.dp).clip(RoundedCornerShape(16.dp))) {
+                        Box(Modifier.size(if (photos.size == 1) 240.dp else 120.dp).clip(MaterialTheme.shapes.medium)) {
                             Image(
                                 bitmap = ph.preview.asImageBitmap(),
                                 contentDescription = null,
@@ -700,7 +702,7 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
                                 shape = CircleShape,
                                 modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).clickable(enabled = !busy) { photos.removeAt(i) },
                             ) {
-                                Text("✕", color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                Icon(Icons.Rounded.Close, contentDescription = null, tint = Color.White, modifier = Modifier.padding(6.dp).size(16.dp))
                             }
                         }
                     }
@@ -833,9 +835,7 @@ fun PostScreen(
                                 }
                             }
                             Box {
-                                TextButton(onClick = { menu = true }) {
-                                    Text("⋮", style = MaterialTheme.typography.titleLarge)
-                                }
+                                AppIconButton(Icons.Rounded.MoreVert, null, { menu = true })
                                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                     if (p.mine) {
                                         DropdownMenuItem(

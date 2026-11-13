@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
@@ -82,7 +87,7 @@ private fun Modifier.overlapUp(amount: Dp): Modifier = layout { measurable, cons
 
 /** The first loop, blurred, behind the cards. Blur only exists from Android 12, so older phones keep the plain gradient. */
 @Composable
-private fun LoopBackdrop(net: Net, id: String) {
+private fun LoopBackdrop(net: Net, id: String, modifier: Modifier = Modifier) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     var bmp by remember(id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(id) { bmp = MediaCache.load(net.token, id, true) }
@@ -92,10 +97,10 @@ private fun LoopBackdrop(net: Net, id: String) {
             bitmap = b.asImageBitmap(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().blur(32.dp),
+            modifier = modifier.blur(32.dp),
         )
         Box(
-            Modifier.fillMaxSize().background(
+            modifier.background(
                 Brush.verticalGradient(
                     listOf(Color.Black.copy(alpha = 0.45f), MaterialTheme.colorScheme.background),
                 ),
@@ -110,7 +115,7 @@ private fun DriftBubble(text: String?, onClick: () -> Unit, modifier: Modifier =
     val has = !text.isNullOrBlank()
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(22.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier.widthIn(min = 110.dp, max = 230.dp),
     ) {
@@ -126,14 +131,11 @@ private fun DriftBubble(text: String?, onClick: () -> Unit, modifier: Modifier =
     }
 }
 
-/** The loops of one person as tall cards across the top, each with how long ago it was posted. */
+/** All the loops of one person (an account keeps at most 20, which is three pages). */
 @Composable
-private fun LoopCards(net: Net, hash: String, refreshKey: Int, onOpen: (String) -> Unit) {
-    val ctx = LocalContext.current
+private fun rememberLoops(net: Net, hash: String, refreshKey: Int): List<Post> {
     var loops by remember { mutableStateOf<List<Post>>(emptyList()) }
-
     LaunchedEffect(hash, refreshKey) {
-        // an account keeps at most 20 loops, which is three pages
         val all = ArrayList<Post>()
         var before: Long? = null
         var pages = 0
@@ -148,50 +150,67 @@ private fun LoopCards(net: Net, hash: String, refreshKey: Int, onOpen: (String) 
         }
         loops = all
     }
+    return loops
+}
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(LoopCardH + 32.dp)
-            .background(
+/** The top of a profile: the first loop blurred behind the photo, name, hash, vibe and counts. */
+@Composable
+private fun ProfileHero(net: Net, backdropId: String?, content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier.matchParentSize().background(
                 Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), Color.Transparent),
+                    listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), Color.Transparent),
                 ),
             ),
-    ) {
-        if (loops.isNotEmpty()) {
-            LoopBackdrop(net, loops[0].id)
-            Row(
-                Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                for (l in loops) {
+        )
+        if (backdropId != null) LoopBackdrop(net, backdropId, Modifier.matchParentSize())
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = Space.lg).padding(top = Space.md, bottom = Space.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content,
+        )
+    }
+}
+
+/** The loops of one person as tall cards in a row, under their own title, each with how long ago it was posted. */
+@Composable
+private fun LoopStrip(net: Net, loops: List<Post>, onOpen: (String) -> Unit) {
+    val ctx = LocalContext.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Text(
+            stringResource(R.string.nav_loops),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = Space.lg),
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.lg),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            for (l in loops) {
+                Box(
+                    Modifier
+                        .width(LoopCardW)
+                        .height(LoopCardH)
+                        .clip(MaterialTheme.shapes.large)
+                        .clickable { onOpen(l.id) },
+                ) {
+                    PostImage(l.id, net.token, true, LoopCardW / LoopCardH)
                     Box(
-                        Modifier
-                            .width(LoopCardW)
-                            .height(LoopCardH)
-                            .clip(RoundedCornerShape(26.dp))
-                            .clickable { onOpen(l.id) },
-                    ) {
-                        PostImage(l.id, net.token, true, LoopCardW / LoopCardH)
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent, Color.Black.copy(alpha = 0.35f)),
-                                ),
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent, Color.Black.copy(alpha = 0.35f)),
                             ),
-                        )
-                        Text(
-                            agoShort(ctx, l.at),
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
-                        )
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp))
-                    }
+                        ),
+                    )
+                    Text(
+                        agoShort(ctx, l.at),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                    )
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp))
                 }
             }
         }
@@ -253,7 +272,6 @@ private fun ProfileInfo(u: CUser) {
 /** Up to three friends you both have as followers, and an arrow to the full list. */
 @Composable
 private fun MutualCircles(net: Net, people: List<Member>, onMore: () -> Unit) {
-    val arrow = if (LocalLayoutDirection.current == LayoutDirection.Rtl) "‹" else "›"
     Row(
         Modifier.clip(CircleShape).clickable(onClick = onMore),
         verticalAlignment = Alignment.CenterVertically,
@@ -264,7 +282,7 @@ private fun MutualCircles(net: Net, people: List<Member>, onMore: () -> Unit) {
         }
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                Text(arrow, style = MaterialTheme.typography.titleLarge)
+                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
             }
         }
     }
@@ -324,17 +342,18 @@ fun ProfileScreen(
         if (u != null) {
             // a private account you do not follow, or someone you blocked: no tracks, loops, stages or drifts
             val hidden = u.locked || u.blockedByMe
-            LoopCards(net, u.hash, reload) { id -> onOpenLoop(u.hash, id) }
-            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
+            val loops = rememberLoops(net, u.hash, reload)
+            ProfileHero(net, loops.firstOrNull()?.id) {
                 Avatar(u.hash, net.token, 96.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
+                ProfileInfo(u)
+                CountsRow(u, null, null)
             }
+            if (loops.isNotEmpty()) LoopStrip(net, loops) { id -> onOpenLoop(u.hash, id) }
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                ProfileInfo(u)
-                CountsRow(u, null, null)
                 if (!u.isMe && mutuals.isNotEmpty()) {
                     MutualCircles(net, mutuals) { onMutuals(u.hash) }
                 }
@@ -415,7 +434,11 @@ fun ProfileScreen(
                             },
                             shape = CircleShape,
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text(if (bell) "🔔 " + stringResource(R.string.prof_bell_on) else "🔕 " + stringResource(R.string.prof_bell_off)) }
+                        ) {
+                            Icon(if (bell) Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(Space.sm))
+                            Text(stringResource(if (bell) R.string.prof_bell_on else R.string.prof_bell_off))
+                        }
                     }
                     if (!u.blockedByMe) {
                         OutlinedButton(
@@ -440,7 +463,7 @@ fun ProfileScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text("🔒", style = MaterialTheme.typography.headlineMedium)
+                        Icon(Icons.Rounded.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
                         Text(stringResource(R.string.prof_private_note), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Muted(stringResource(R.string.prof_private_hint))
                     }
@@ -556,24 +579,14 @@ fun MeScreen(
 
             // the drift lives in a bubble above the photo (your newest one that is still alive)
             val latestDrift = data.optJSONArray("drifts").toDrifts().maxByOrNull { it.postedAt }
-            Box(Modifier.fillMaxWidth()) {
-                LoopCards(net, u.hash, reload + refreshKey) { id -> onOpenLoop(u.hash, id) }
+            val loops = rememberLoops(net, u.hash, reload + refreshKey)
+            ProfileHero(net, loops.firstOrNull()?.id) {
+                Spacer(Modifier.height(48.dp))   // room for the settings button at the top
                 DriftBubble(
                     text = latestDrift?.text,
                     onClick = { if (latestDrift != null) editingDrift = latestDrift else composing = true },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp, start = 16.dp, end = 16.dp),
                 )
-            }
-            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
                 AvatarEditor(net, u.hash, data.optJSONObject("avatar"), onAddStage = onNewStage) { reload++ }
-            }
-
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                ErrorText(error)
                 ProfileInfo(u)
                 CountsRow(u, { onUsers("followers") }, { onUsers("following") })
                 FilledTonalButton(onClick = { editingVibe = true }, shape = CircleShape) {
@@ -581,6 +594,15 @@ fun MeScreen(
                     Spacer(Modifier.width(Space.sm))
                     Text(stringResource(R.string.prof_edit_vibe))
                 }
+            }
+            if (loops.isNotEmpty()) LoopStrip(net, loops) { id -> onOpenLoop(u.hash, id) }
+
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ErrorText(error)
 
                 PostsSection(net, null, reload + refreshKey, onOpenPost)
 

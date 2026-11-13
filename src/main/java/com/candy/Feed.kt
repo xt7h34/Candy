@@ -313,7 +313,7 @@ fun DriftCard(d: Drift, token: String, onOpen: ((String) -> Unit)?) {
     val ctx = LocalContext.current
     val tappable = onOpen != null && d.ownerHash.isNotEmpty()
     CandyCard(
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier
             .fillMaxWidth()

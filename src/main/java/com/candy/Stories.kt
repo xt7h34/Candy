@@ -1,5 +1,8 @@
 package com.candy
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import android.graphics.Bitmap
@@ -249,7 +252,7 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    TextButton(onClick = onBack) { Text("✕", color = Color.White) }
+                    AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
                 }
             }
 
@@ -272,7 +275,7 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
                             }
                         },
                     ) { Text("👁 " + item.views, color = Color.White) }
-                    TextButton(onClick = { paused = true; confirmDelete = true }) { Text("🗑", color = Color.White) }
+                    AppIconButton(Icons.Rounded.Delete, null, { paused = true; confirmDelete = true }, tint = Color.White)
                 }
             }
         }

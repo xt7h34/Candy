@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Image
@@ -481,23 +486,38 @@ fun ChatsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            when {
-                                t.lastDeleted -> stringResource(R.string.chat_last_deleted)
-                                t.lastKind == "sys" -> "⚙️"
-                                t.lastKind == "image" -> "📷" + (if (t.lastText.isNotEmpty()) " " + t.lastText else "")
-                                t.lastText.isNotEmpty() -> t.lastText
-                                t.lastKind == "voice" -> "🎤"
-                                t.lastKind == "sticker" -> "😊"
-                                t.lastKind == "track" -> "🖼️"
-                                else -> "🎬"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (t.unread > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = if (t.unread > 0) FontWeight.Bold else FontWeight.Normal,
-                        )
+                        val previewIcon: ImageVector? = when {
+                            t.lastDeleted -> Icons.Rounded.Block
+                            t.lastKind == "sys" -> Icons.Rounded.Settings
+                            t.lastKind == "image" -> Icons.Rounded.Image
+                            t.lastText.isNotEmpty() -> null
+                            t.lastKind == "voice" -> Icons.Rounded.Mic
+                            t.lastKind == "sticker" -> Icons.Rounded.EmojiEmotions
+                            t.lastKind == "track" -> Icons.Rounded.Image
+                            else -> Icons.Rounded.PlayCircle
+                        }
+                        val previewText = when {
+                            t.lastDeleted -> stringResource(R.string.chat_last_deleted).removePrefix("🚫").trim()
+                            t.lastKind == "sys" -> ""
+                            t.lastKind == "image" -> if (t.lastText.isNotEmpty()) t.lastText else stringResource(R.string.chat_kind_image)
+                            t.lastText.isNotEmpty() -> t.lastText
+                            t.lastKind == "voice" -> stringResource(R.string.chat_kind_voice)
+                            t.lastKind == "sticker" -> stringResource(R.string.chat_kind_sticker)
+                            t.lastKind == "track" -> stringResource(R.string.chat_kind_track)
+                            else -> stringResource(R.string.chat_kind_loop)
+                        }
+                        val previewColor = if (t.unread > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (previewIcon != null) Icon(previewIcon, contentDescription = null, tint = previewColor, modifier = Modifier.size(16.dp))
+                            Text(
+                                previewText,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = previewColor,
+                                fontWeight = if (t.unread > 0) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
                     }
                     if (t.unread > 0) {
                         Box(
@@ -524,7 +544,7 @@ private fun QuoteBlock(m: ChatMsg, who: String, textColor: Color) {
         "image" -> "📷 " + stringResource(R.string.chat_kind_image)
         else -> m.replyText
     }
-    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x22000000)).padding(6.dp)) {
+    Box(Modifier.clip(MaterialTheme.shapes.extraSmall).background(Color(0x22000000)).padding(6.dp)) {
         Column {
             Text(who, color = textColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(snippet, color = textColor, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1248,7 +1268,7 @@ fun ChatScreen(
         if (pins.isNotEmpty()) {
             val pin = pins[pinIdx % pins.size]
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1341,7 +1361,7 @@ fun ChatScreen(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.small)
                         .background(if ((isSel && menuStyle == "bar") || highlightN == m.n) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
                         .pointerInput(m.n) {
                             // swipe a message sideways to reply to it
@@ -1402,7 +1422,7 @@ fun ChatScreen(
                             Column(
                                 Modifier
                                     .widthIn(max = 260.dp)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(MaterialTheme.shapes.medium)
                                     .combinedClickable(onClick = {}, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m })
                                     .background(if (m.mine) (theme.mine ?: MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.surfaceVariant)
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1419,7 +1439,7 @@ fun ChatScreen(
                                         Box(
                                             Modifier
                                                 .width(150.dp)
-                                                .clip(RoundedCornerShape(12.dp))
+                                                .clip(MaterialTheme.shapes.small)
                                                 .combinedClickable(
                                                     onClick = { onOpenLoop(m.loopOwnerHash, loopId) },
                                                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m },
@@ -1439,7 +1459,7 @@ fun ChatScreen(
                                         Column(
                                             Modifier
                                                 .width(180.dp)
-                                                .clip(RoundedCornerShape(12.dp))
+                                                .clip(MaterialTheme.shapes.small)
                                                 .combinedClickable(
                                                     onClick = { onOpenPost(trackId) },
                                                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m },
@@ -1762,10 +1782,14 @@ fun ChatScreen(
                 StickerImage(smSticker, net.token, 240.dp)
                 StickerSheetActions(net, smSticker)
                 TextButton(onClick = { replyTo = sm; stickerMsg = null }, modifier = Modifier.fillMaxWidth()) {
-                    Text("↩  " + stringResource(R.string.msg_action_reply))
+                    Icon(Icons.AutoMirrored.Rounded.Reply, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(stringResource(R.string.msg_action_reply))
                 }
                 TextButton(onClick = { forwarding = sm; stickerMsg = null }, modifier = Modifier.fillMaxWidth()) {
-                    Text("↪  " + stringResource(R.string.msg_action_forward))
+                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(stringResource(R.string.msg_action_forward))
                 }
             }
         }
@@ -1779,7 +1803,7 @@ private fun TypingBubble() {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
         Row(
             Modifier
-                .clip(RoundedCornerShape(18.dp))
+                .clip(MaterialTheme.shapes.medium)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -1863,7 +1887,7 @@ private fun ForwardDialog(net: Net, m: ChatMsg, onDismiss: () -> Unit) {
 @Composable
 private fun ReactionRow(onPick: (String) -> Unit, onMore: () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
     ) {
@@ -1916,15 +1940,15 @@ private fun ExtraMenuItems(
     showDelete: Boolean,
 ) {
     if (canEdit(m)) {
-        DropdownMenuItem(text = { Text("✏️  " + stringResource(R.string.msg_action_edit)) }, onClick = onEdit)
+        DropdownMenuItem(text = { Text(stringResource(R.string.msg_action_edit)) }, leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) }, onClick = onEdit)
     }
     if (pinned) {
-        DropdownMenuItem(text = { Text("📌  " + stringResource(R.string.msg_action_unpin)) }, onClick = onUnpin)
+        DropdownMenuItem(text = { Text(stringResource(R.string.msg_action_unpin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, contentDescription = null) }, onClick = onUnpin)
     } else {
-        DropdownMenuItem(text = { Text("📌  " + stringResource(R.string.msg_action_pin)) }, onClick = onPin)
+        DropdownMenuItem(text = { Text(stringResource(R.string.msg_action_pin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, contentDescription = null) }, onClick = onPin)
     }
     if (showDelete) {
-        DropdownMenuItem(text = { Text("🗑  " + stringResource(R.string.msg_action_delete)) }, onClick = onDelete)
+        DropdownMenuItem(text = { Text(stringResource(R.string.msg_action_delete)) }, leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) }, onClick = onDelete)
     }
 }
 
@@ -2003,7 +2027,7 @@ private fun SearchResults(hits: List<SearchHit>, peerName: String, onPick: (Int)
         if (hits.isEmpty()) item { Muted(stringResource(R.string.chat_search_none)) }
         items(hits) { h ->
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth().clickable { onPick(h.n) },
             ) {
