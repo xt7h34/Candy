@@ -1,5 +1,28 @@
 package com.candy
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.AccountBalance
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BubbleChart
+import androidx.compose.material.icons.rounded.ContactPhone
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Diamond
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.VpnKey
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -35,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -126,7 +150,31 @@ private fun Chevron() {
     }
 }
 
-/** One row of a settings list: an icon, a title, an optional line under it, and an arrow. */
+/** The icon that goes with each old emoji, so every row of every settings page looks the same. */
+private fun symbolFor(emoji: String): ImageVector? = when (emoji) {
+    "🔖" -> Icons.Rounded.Bookmark
+    "🗂️" -> Icons.Rounded.Folder
+    "💬" -> Icons.Outlined.ChatBubbleOutline
+    "🔒" -> Icons.Rounded.Lock
+    "🫧" -> Icons.Rounded.BubbleChart
+    "🚫" -> Icons.Rounded.Block
+    "🎨" -> Icons.Rounded.Palette
+    "🚪" -> Icons.AutoMirrored.Rounded.Logout
+    "🔐" -> Icons.Rounded.Shield
+    "💎" -> Icons.Rounded.Diamond
+    "⚙️" -> Icons.Rounded.Settings
+    "👀" -> Icons.Rounded.Visibility
+    "📈" -> Icons.Rounded.Insights
+    "📇" -> Icons.Rounded.ContactPhone
+    "🔑" -> Icons.Rounded.Key
+    "🗝️" -> Icons.Rounded.VpnKey
+    "🏛️" -> Icons.Rounded.AccountBalance
+    "🔗" -> Icons.Rounded.Link
+    "🗑️" -> Icons.Rounded.Delete
+    else -> null
+}
+
+/** One row of a settings list: an icon in a soft square, a title, an optional line under it, and an arrow. */
 @Composable
 internal fun SettingsRow(
     title: String,
@@ -137,19 +185,36 @@ internal fun SettingsRow(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val scheme = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(Space.lg),
     ) {
-        Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
-            if (icon != null) icon() else if (emoji != null) Text(emoji, fontSize = 22.sp)
+        val symbol = if (emoji != null) symbolFor(emoji) else null
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(if (danger) scheme.errorContainer.copy(alpha = 0.5f) else if (icon != null) Color.Transparent else scheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                icon != null -> icon()
+                symbol != null -> Icon(
+                    symbol,
+                    contentDescription = null,
+                    tint = if (danger) scheme.error else scheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                emoji != null -> Text(emoji, fontSize = 22.sp)
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                color = if (danger) scheme.error else scheme.onSurface,
             )
             if (subtitle != null) Muted(subtitle)
         }
@@ -161,16 +226,16 @@ internal fun SettingsRow(
 internal fun GroupLabel(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = Space.lg, end = Space.lg, top = Space.xl, bottom = Space.xs),
     )
 }
 
-/** The thick line between groups, like in the Instagram settings. */
+/** A thin line between groups. */
 @Composable
 internal fun GroupDivider() {
-    Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(6.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh))
+    Box(Modifier.fillMaxWidth().padding(top = Space.sm).height(1.dp).background(CandyBrand.hairline()))
 }
 
 @Composable
@@ -591,13 +656,7 @@ fun SettingsMenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier.size(42.dp).androidSemantics(desc),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.size(20.dp)) {
-                val w = 2.2.dp.toPx()
-                for (i in 0..2) {
-                    val y = size.height * (0.2f + 0.3f * i)
-                    drawLine(Color.White, Offset(0f, y), Offset(size.width, y), strokeWidth = w, cap = StrokeCap.Round)
-                }
-            }
+            Icon(Icons.Rounded.Menu, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
     }
 }

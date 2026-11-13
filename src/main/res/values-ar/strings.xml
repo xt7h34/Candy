@@ -381,4 +381,8 @@
     <string name="feed_scope_all">الكل</string>
     <string name="msg_haptics">اهتزاز التطبيق</string>
     <string name="stage_preparing">بجهّز الفيديو عشان يترفع أسرع…</string>
+    <string name="feed_camera_desc">الكاميرا</string>
+    <string name="like_desc">إعجاب</string>
+    <string name="comment_desc">التعليقات</string>
+    <string name="share_desc">إرسال</string>
 </resources>

@@ -148,7 +148,7 @@ fun BubblesScreen(net: Net, onBack: () -> Unit) {
             if (!loading && bubbles.isEmpty()) Muted(stringResource(R.string.bub_empty))
 
             for (b in bubbles) {
-                Card(Modifier.fillMaxWidth()) {
+                CandyCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -252,7 +252,7 @@ fun VisitsScreen(net: Net, onBack: () -> Unit, onOpen: (String) -> Unit) {
                 item { Muted(stringResource(R.string.visits_empty), Modifier.padding(vertical = 16.dp)) }
             }
             items(visits) { v ->
-                Card(Modifier.fillMaxWidth().clickable(enabled = v.hash.isNotEmpty()) { onOpen(v.hash) }) {
+                CandyCard(Modifier.fillMaxWidth().clickable(enabled = v.hash.isNotEmpty()) { onOpen(v.hash) }) {
                     Row(
                         Modifier.fillMaxWidth().padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -297,7 +297,7 @@ fun GrowthScreen(net: Net, onBack: () -> Unit) {
             if (loading) Loading()
             val d = data
             if (d != null) {
-                Card(Modifier.fillMaxWidth()) {
+                CandyCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         StatLine(stringResource(R.string.growth_now), d.optInt("current").toString())
                         if (d.optBoolean("hasHistory")) {

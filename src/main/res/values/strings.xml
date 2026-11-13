@@ -381,4 +381,8 @@
     <string name="feed_scope_all">Everyone</string>
     <string name="msg_haptics">App vibration</string>
     <string name="stage_preparing">Getting the video ready so it uploads faster…</string>
+    <string name="feed_camera_desc">Camera</string>
+    <string name="like_desc">Like</string>
+    <string name="comment_desc">Comments</string>
+    <string name="share_desc">Send</string>
 </resources>

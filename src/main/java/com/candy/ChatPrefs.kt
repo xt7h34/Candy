@@ -60,7 +60,7 @@ object ChatPrefs {
     fun setHaptics(c: Context, on: Boolean) = sp(c).edit().putBoolean("haptics", on).apply()
 
     /** Whether the tracks feed shows everyone's tracks (true) or only the people you follow (false, the default). */
-    fun feedAll(c: Context): Boolean = sp(c).getBoolean("feed_all", false)
+    fun feedAll(c: Context): Boolean = sp(c).getBoolean("feed_all", true)   // everyone is the default; people who picked Following keep it
     fun setFeedAll(c: Context, on: Boolean) = sp(c).edit().putBoolean("feed_all", on).apply()
 
     /** Where the little eye (the other person read my last message) shows: "list" at the end of the chat's row in the inbox, or "chat" under the message. */

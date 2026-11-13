@@ -1,5 +1,11 @@
 package com.candy
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.graphics.Bitmap
@@ -184,7 +190,7 @@ private fun LoopCards(net: Net, hash: String, refreshKey: Int, onOpen: (String) 
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
                         )
-                        Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(10.dp))
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp))
                     }
                 }
             }
@@ -570,8 +576,10 @@ fun MeScreen(
                 ErrorText(error)
                 ProfileInfo(u)
                 CountsRow(u, { onUsers("followers") }, { onUsers("following") })
-                OutlinedButton(onClick = { editingVibe = true }, shape = CircleShape) {
-                    Text("✏️  " + stringResource(R.string.prof_edit_vibe))
+                FilledTonalButton(onClick = { editingVibe = true }, shape = CircleShape) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(stringResource(R.string.prof_edit_vibe))
                 }
 
                 PostsSection(net, null, reload + refreshKey, onOpenPost)

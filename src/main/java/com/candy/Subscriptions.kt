@@ -579,7 +579,7 @@ private fun SubTierCard(
 ) {
     val scale by animateFloatAsState(targetValue = if (selected) 1f else 0.9f, label = "subTierScale")
     val fade by animateFloatAsState(targetValue = if (selected) 1f else 0.7f, label = "subTierFade")
-    Card(
+    CandyCard(
         modifier = modifier
             .graphicsLayer {
                 scaleX = scale

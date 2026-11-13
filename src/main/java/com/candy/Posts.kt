@@ -1,5 +1,19 @@
 package com.candy
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -330,17 +344,60 @@ object PostImagePrep {
 
 // ───────────────────────── Likes, cards, grid ─────────────────────────
 
+/** One tap target under a post: an icon, and a number or nothing next to it. */
 @Composable
-fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int) {
+fun ActionPill(
+    icon: ImageVector,
+    desc: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    iconScale: Float = 1f,
+) {
+    Row(
+        modifier
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = desc }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale },
+        )
+        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
+    }
+}
+
+/** The like heart with its number. It pops when you like. */
+@Composable
+fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int, idleTint: Color = MaterialTheme.colorScheme.onSurface) {
     val scope = rememberCoroutineScope()
     val haptic = rememberAppHaptic()
     var liked by remember(postId) { mutableStateOf(initialLiked) }
     var likes by remember(postId) { mutableStateOf(initialLikes) }
+    val pop = remember { Animatable(1f) }
 
-    TextButton(
+    ActionPill(
+        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+        desc = stringResource(R.string.like_desc),
+        label = likes.toString(),
+        tint = if (liked) Color(0xFFFF4D6D) else idleTint,
+        iconScale = pop.value,
         onClick = {
             val was = liked
-            if (!was) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)   // a small tap when you like
+            if (!was) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)   // a small tap when you like
+                scope.launch {
+                    pop.animateTo(1.3f, tween(90))
+                    pop.animateTo(1f, spring(dampingRatio = 0.45f))
+                }
+            }
             liked = !was
             likes += if (was) -1 else 1
             scope.launch {
@@ -353,18 +410,19 @@ fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: In
                 }
             }
         },
-    ) { Text((if (liked) "❤️" else "🤍") + " " + likes) }
+    )
 }
 
-/** The bookmark: saves a track or a loop so it shows in Settings > Saved. */
 @Composable
-fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = MaterialTheme.colorScheme.primary) {
+fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = MaterialTheme.colorScheme.onSurface) {
     val scope = rememberCoroutineScope()
     val haptic = rememberAppHaptic()
     var saved by remember(postId) { mutableStateOf(initialSaved) }
-    val desc = stringResource(R.string.save_desc)
 
-    TextButton(
+    ActionPill(
+        icon = if (saved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+        desc = stringResource(R.string.save_desc),
+        tint = if (saved) MaterialTheme.colorScheme.primary else tint,
         onClick = {
             val want = !saved
             saved = want
@@ -374,22 +432,32 @@ fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = Ma
                 if (!r.ok) saved = !want
             }
         },
-        modifier = Modifier.semantics { contentDescription = desc },
+    )
+}
+
+/** The row under a post: like, comments and send on one side, save on the other. */
+@Composable
+fun PostActions(
+    net: Net,
+    id: String,
+    liked: Boolean,
+    likes: Int,
+    saved: Boolean,
+    comments: Int,
+    onComments: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Canvas(Modifier.size(width = 15.dp, height = 20.dp)) {
-            val w = size.width
-            val h = size.height
-            val path = Path().apply {
-                moveTo(w * 0.08f, h * 0.04f)
-                lineTo(w * 0.92f, h * 0.04f)
-                lineTo(w * 0.92f, h * 0.96f)
-                lineTo(w * 0.5f, h * 0.7f)
-                lineTo(w * 0.08f, h * 0.96f)
-                close()
-            }
-            if (saved) drawPath(path, tint)
-            drawPath(path, tint, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LikeButton(net, id, liked, likes)
+            ActionPill(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.comment_desc), onComments, label = comments.toString())
+            ActionPill(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.share_desc), onShare)
         }
+        SaveButton(net, id, saved)
     }
 }
 
@@ -407,14 +475,13 @@ fun PostCard(
 ) {
     val ctx = LocalContext.current
     var sharing by remember { mutableStateOf(false) }
-    Card(
+    CandyCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { onOpenProfile(post.ownerHash) },
+                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpenProfile(post.ownerHash) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -426,13 +493,13 @@ fun PostCard(
                         MaterialTheme.typography.titleSmall,
                         FontWeight.Bold,
                     )
-                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · 📍 " + it } ?: ""))
+                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · " + it } ?: ""))
                 }
             }
             if (post.imageCount > 1) {
                 FanStack(net, post) { onOpenPost(post.id) }
             } else if (post.hasImage) {
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
+                Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
                     PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
                 }
             }
@@ -443,20 +510,7 @@ fun PostCard(
                     modifier = Modifier.fillMaxWidth().clickable { onOpenPost(post.id) }.padding(horizontal = 4.dp),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    LikeButton(net, post.id, post.liked, post.likes)
-                }
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    TextButton(onClick = { onComments(post.id) }) { Text("💬 " + post.comments) }
-                }
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    TextButton(onClick = { sharing = true }) { Text("📨") }
-                }
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    SaveButton(net, post.id, post.saved)
-                }
-            }
+            PostActions(net, post.id, post.liked, post.likes, post.saved, post.comments, onComments = { onComments(post.id) }, onShare = { sharing = true })
         }
     }
     if (sharing) SendPostDialog(net, post.id) { sharing = false }
@@ -756,15 +810,14 @@ fun PostScreen(
             if (notice.isNotEmpty()) Muted(notice)
             val p = post
             if (p != null) {
-                Card(
+                CandyCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    shape = MaterialTheme.shapes.large,
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Row(
-                                Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable { onOpenProfile(p.ownerHash) },
+                                Modifier.weight(1f).clip(MaterialTheme.shapes.small).clickable { onOpenProfile(p.ownerHash) },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
@@ -801,7 +854,7 @@ fun PostScreen(
                         if (p.imageCount > 1) {
                             PostPager(net, p)
                         } else if (p.hasImage) {
-                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
+                            Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
                                 PostImage(p.id, net.token, false, aspectOf(p))
                             }
                         }
@@ -812,20 +865,7 @@ fun PostScreen(
                                 modifier = Modifier.padding(horizontal = 4.dp),
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                LikeButton(net, p.id, p.liked, p.likes)
-                            }
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                TextButton(onClick = { onOpenComments(p.id) }) { Text("💬 " + p.comments) }
-                            }
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                TextButton(onClick = { sharing = true }) { Text("📨") }
-                            }
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                SaveButton(net, p.id, p.saved)
-                            }
-                        }
+                        PostActions(net, p.id, p.liked, p.likes, p.saved, p.comments, onComments = { onOpenComments(p.id) }, onShare = { sharing = true })
                     }
                 }
 

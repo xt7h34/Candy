@@ -11,8 +11,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.material3.Typography
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFFD94668),
@@ -23,6 +29,10 @@ private val LightColors = lightColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFF6E3BC),
     onSecondaryContainer = Color(0xFF2B1D00),
+    tertiary = Color(0xFFE8895A),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFFFDBCB),
+    onTertiaryContainer = Color(0xFF3A1200),
     background = Color(0xFFFFF8F7),
     onBackground = Color(0xFF26191D),
     surface = Color(0xFFFFF8F7),
@@ -56,9 +66,13 @@ private val DarkColors = darkColorScheme(
     onSecondary = Color(0xFF3D2A05),
     secondaryContainer = Color(0xFF6B4F1E),
     onSecondaryContainer = Color(0xFFFFEFD2),
-    background = Color(0xFF170D11),
+    tertiary = Color(0xFFFFB98F),
+    onTertiary = Color(0xFF4A1F00),
+    tertiaryContainer = Color(0xFF6B3516),
+    onTertiaryContainer = Color(0xFFFFDBCB),
+    background = Color(0xFF130A0E),
     onBackground = Color(0xFFF1DFE4),
-    surface = Color(0xFF170D11),
+    surface = Color(0xFF130A0E),
     onSurface = Color(0xFFF1DFE4),
     surfaceVariant = Color(0xFF4A3840),
     onSurfaceVariant = Color(0xFFD9C2CA),
@@ -71,20 +85,58 @@ private val DarkColors = darkColorScheme(
     inversePrimary = Color(0xFFB0305A),
     scrim = Color(0xFF000000),
     surfaceBright = Color(0xFF42333A),
-    surfaceDim = Color(0xFF170D11),
+    surfaceDim = Color(0xFF130A0E),
     surfaceContainerLowest = Color(0xFF110709),
-    surfaceContainerLow = Color(0xFF211318),
-    surfaceContainer = Color(0xFF2A1A20),
-    surfaceContainerHigh = Color(0xFF35242B),
-    surfaceContainerHighest = Color(0xFF402E36),
+    surfaceContainerLow = Color(0xFF1D1117),
+    surfaceContainer = Color(0xFF26171D),
+    surfaceContainerHigh = Color(0xFF302027),
+    surfaceContainerHighest = Color(0xFF3B2A32),
 )
 
+/** The only corner sizes in the app: 8, 12, 16, 24 and 32. Use MaterialTheme.shapes.* instead of a number. */
 private val CandyShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(36.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp),
+)
+
+/** The spacing scale. Use these instead of a loose number. */
+object Space {
+    val xs: Dp = 4.dp
+    val sm: Dp = 8.dp
+    val md: Dp = 12.dp
+    val lg: Dp = 16.dp
+    val xl: Dp = 24.dp
+    val xxl: Dp = 32.dp
+}
+
+/** The brand colours of Candy: rose melting into peach. Used for the one thing that is active or primary on a screen. */
+object CandyBrand {
+    @Composable
+    fun gradient(): Brush = Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary))
+
+    /** The thin line round cards and sheets, so surfaces separate without heavy shadows. */
+    @Composable
+    fun hairline(): Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+}
+
+// No letterSpacing anywhere: it breaks the joined letters of Arabic.
+private val CandyTypography = Typography(
+    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
+    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
+    bodySmall = TextStyle(fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
 @Composable
@@ -110,6 +162,7 @@ fun CandyTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (dark) DarkColors else LightColors,
         shapes = CandyShapes,
+        typography = CandyTypography,
         content = content,
     )
 }

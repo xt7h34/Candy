@@ -1,6 +1,16 @@
 package com.candy
 
-import androidx.compose.material3.FilterChip
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.layout.Spacer
@@ -84,6 +94,16 @@ fun FeedScreen(
     val haptic = rememberAppHaptic()
     var composing by remember { mutableStateOf(false) }
     var feedAll by remember { mutableStateOf(ChatPrefs.feedAll(ctx)) }       // everyone's tracks, or only the people you follow
+    var scopeMenu by remember { mutableStateOf(false) }
+    fun chooseScope(all: Boolean) {
+        scopeMenu = false
+        if (feedAll != all) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            feedAll = all
+            ChatPrefs.setFeedAll(ctx, all)
+            posts = emptyList()
+        }
+    }
     fun feedPath(before: Long?): String {
         val q = ArrayList<String>()
         if (feedAll) q.add("scope=all")
@@ -158,7 +178,7 @@ fun FeedScreen(
                 // the + is always at the top left, even in Arabic: it opens the camera
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Row(
-                        Modifier.fillMaxWidth().padding(top = 12.dp),
+                        Modifier.fillMaxWidth().padding(top = Space.md),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
@@ -166,15 +186,58 @@ fun FeedScreen(
                             Modifier
                                 .size(44.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(CandyBrand.gradient())
                                 .clickable { onOpenCamera() },
                             contentAlignment = Alignment.Center,
-                        ) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
-                        Text(
-                            stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        ) {
+                            Icon(
+                                Icons.Rounded.Add,
+                                contentDescription = stringResource(R.string.feed_camera_desc),
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
+                        // "Candy" is also the switch between everyone and the people you follow: tap it for the floating list
+                        Box {
+                            Row(
+                                Modifier
+                                    .clip(MaterialTheme.shapes.extraLarge)
+                                    .clickable { scopeMenu = true }
+                                    .padding(start = Space.md, end = Space.sm, top = Space.xs, bottom = Space.xs),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    stringResource(R.string.app_name),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                val turn by animateFloatAsState(if (scopeMenu) 180f else 0f, label = "scope-arrow")
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(26.dp).rotate(turn),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = scopeMenu,
+                                onDismissRequest = { scopeMenu = false },
+                                shape = MaterialTheme.shapes.medium,
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.feed_scope_all)) },
+                                    leadingIcon = { Icon(Icons.Rounded.Public, contentDescription = null) },
+                                    trailingIcon = { if (feedAll) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = { chooseScope(true) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.feed_scope_following)) },
+                                    leadingIcon = { Icon(Icons.Rounded.People, contentDescription = null) },
+                                    trailingIcon = { if (!feedAll) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = { chooseScope(false) },
+                                )
+                            }
+                        }
                         Spacer(Modifier.size(44.dp))   // pulling the feed down refreshes it now; this keeps the title in the middle
                     }
                 }
@@ -187,34 +250,6 @@ fun FeedScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(drifts) { DriftChip(it, net.token, onOpen) }
                     }
-                }
-            }
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = !feedAll,
-                        onClick = {
-                            if (feedAll) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                feedAll = false
-                                ChatPrefs.setFeedAll(ctx, false)
-                                posts = emptyList()
-                            }
-                        },
-                        label = { Text(stringResource(R.string.feed_scope_following)) },
-                    )
-                    FilterChip(
-                        selected = feedAll,
-                        onClick = {
-                            if (!feedAll) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                feedAll = true
-                                ChatPrefs.setFeedAll(ctx, true)
-                                posts = emptyList()
-                            }
-                        },
-                        label = { Text(stringResource(R.string.feed_scope_all)) },
-                    )
                 }
             }
             items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
@@ -245,7 +280,7 @@ fun FeedScreen(
 @Composable
 private fun DriftChip(d: Drift, token: String, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
-    Card(
+    CandyCard(
         modifier = Modifier
             .width(230.dp)
             .then(if (d.ownerHash.isNotEmpty()) Modifier.clickable { onOpen(d.ownerHash) } else Modifier),
@@ -277,7 +312,7 @@ private fun DriftChip(d: Drift, token: String, onOpen: (String) -> Unit) {
 fun DriftCard(d: Drift, token: String, onOpen: ((String) -> Unit)?) {
     val ctx = LocalContext.current
     val tappable = onOpen != null && d.ownerHash.isNotEmpty()
-    Card(
+    CandyCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier

@@ -420,7 +420,7 @@ internal fun UpdateSection() {
     val status = UpdateState.status
     val info = UpdateState.info
 
-    Card(Modifier.fillMaxWidth()) {
+    CandyCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle(stringResource(R.string.upd_title))
             Text(

@@ -105,7 +105,7 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
 /** A person in a list: photo, name, hash and a line of their vibe. */
 @Composable
 fun UserRow(u: CUser, token: String, onOpen: (String) -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable { onOpen(u.hash) }) {
+    CandyCard(Modifier.fillMaxWidth().clickable { onOpen(u.hash) }) {
         Row(
             Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,

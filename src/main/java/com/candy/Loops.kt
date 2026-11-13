@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import android.content.Context
@@ -235,9 +237,20 @@ private fun LoopPage(
             Modifier.align(Alignment.BottomEnd).padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            LikeButton(net, loop.id, loop.liked, loop.likes)
-            TextButton(onClick = { onOpenComments(loop.id) }) { Text("💬 " + loop.comments) }
-            TextButton(onClick = { sending = true }) { Text("📨") }
+            LikeButton(net, loop.id, loop.liked, loop.likes, idleTint = Color.White)
+            ActionPill(
+                androidx.compose.material.icons.Icons.Outlined.ChatBubbleOutline,
+                stringResource(R.string.comment_desc),
+                { onOpenComments(loop.id) },
+                label = loop.comments.toString(),
+                tint = Color.White,
+            )
+            ActionPill(
+                androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Send,
+                stringResource(R.string.share_desc),
+                { sending = true },
+                tint = Color.White,
+            )
             SaveButton(net, loop.id, loop.saved, Color.White)
             Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
         }

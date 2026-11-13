@@ -1,5 +1,24 @@
 package com.candy
 
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.EmojiEmotions
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.Reply
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -346,7 +365,9 @@ fun ChatsScreen(
                         }
                     }
                 }
-                OutlinedButton(onClick = { composingDrift = true }, modifier = Modifier.fillMaxWidth()) {
+                FilledTonalButton(onClick = { composingDrift = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(Space.sm))
                     Text(stringResource(R.string.feed_new))
                 }
             }
@@ -356,7 +377,7 @@ fun ChatsScreen(
         if (flareFriends.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.flares_title)) }
             items(flareFriends) { ff ->
-                Card(
+                CandyCard(
                     Modifier.fillMaxWidth().clickable { if (ff.unopened > 0) onOpenFlare(ff.hash) else onSendFlare(ff.hash) },
                 ) {
                     Row(
@@ -392,7 +413,7 @@ fun ChatsScreen(
         if (flows.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.flow_title)) }
             items(flows) { f ->
-                Card(Modifier.fillMaxWidth().clickable { onOpenChat(f.peerHash) }) {
+                CandyCard(Modifier.fillMaxWidth().clickable { onOpenChat(f.peerHash) }) {
                     Row(
                         Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -445,7 +466,7 @@ fun ChatsScreen(
         }
         val seenInList = ChatPrefs.seenPlace(ctx) == "list"
         items(threads) { t ->
-            Card(Modifier.fillMaxWidth().clickable { onOpenChat(t.hash) }) {
+            CandyCard(Modifier.fillMaxWidth().clickable { onOpenChat(t.hash) }) {
                 Row(
                     Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -484,7 +505,7 @@ fun ChatsScreen(
                         ) { Text(t.unread.toString(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall) }
                     } else if (t.lastSeen && seenInList) {
                         // the other person read my last message (it never shows together with the unread count: that one is about their messages)
-                        Text("👁", style = MaterialTheme.typography.titleMedium)
+                        Icon(Icons.Rounded.Visibility, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -1136,9 +1157,7 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                TextButton(onClick = { searching = false; searchQuery = ""; hits.clear() }) {
-                    Text("✕", style = MaterialTheme.typography.titleLarge)
-                }
+                AppIconButton(Icons.Rounded.Close, null, { searching = false; searchQuery = ""; hits.clear() })
                 Field(stringResource(R.string.chat_search_hint), searchQuery, { searchQuery = it.take(40) }, modifier = Modifier.weight(1f))
             }
         } else if (sel != null && menuStyle == "bar") {
@@ -1149,19 +1168,15 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    TextButton(onClick = { selected = null }) { Text("✕", style = MaterialTheme.typography.titleLarge) }
+                    AppIconButton(Icons.Rounded.Close, null, { selected = null })
                     Text("1", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     if (!sel.deleted) {
-                        TextButton(onClick = { replyTo = sel; selected = null }) { Text("↩", style = MaterialTheme.typography.titleLarge) }
-                        TextButton(onClick = { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty()) {
-                            Text("📋", style = MaterialTheme.typography.titleLarge)
-                        }
-                        TextButton(onClick = { forwarding = sel; selected = null }, enabled = sel.voiceMs == null && !sel.hasImage) {
-                            Text("↪", style = MaterialTheme.typography.titleLarge)
-                        }
-                        TextButton(onClick = { deleting = sel; selected = null }) { Text("🗑", style = MaterialTheme.typography.titleLarge) }
+                        AppIconButton(Icons.AutoMirrored.Rounded.Reply, null, { replyTo = sel; selected = null })
+                        AppIconButton(Icons.Rounded.ContentCopy, null, { copyMsg(sel); selected = null }, enabled = sel.text.isNotEmpty())
+                        AppIconButton(Icons.AutoMirrored.Rounded.ArrowForward, null, { forwarding = sel; selected = null }, enabled = sel.voiceMs == null && !sel.hasImage)
+                        AppIconButton(Icons.Rounded.Delete, null, { deleting = sel; selected = null })
                         Box {
-                            TextButton(onClick = { moreMenu = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                            AppIconButton(Icons.Rounded.MoreVert, null, { moreMenu = true })
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                                 if (sel.text.isNotEmpty()) {
                                     DropdownMenuItem(
@@ -1195,7 +1210,7 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
+                AppIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), onBack)
                 Row(
                     Modifier.weight(1f).clickable { onOpenSettings(peerHash) },
                     verticalAlignment = Alignment.CenterVertically,
@@ -1212,13 +1227,13 @@ fun ChatScreen(
                         }
                     }
                 }
-                TextButton(onClick = { searching = true }) { Text("🔍", style = MaterialTheme.typography.titleLarge) }
+                AppIconButton(Icons.Rounded.Search, null, { searching = true })
             }
         }
 
         // the other person asked for silent deleting
         if (proposal == false) {
-            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            CandyCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.msg_delete_proposal_theirs, shownName), style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1249,7 +1264,7 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("📌")
+                    Icon(Icons.Rounded.PushPin, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Text(
                         msgPreview(pin.msg),
                         modifier = Modifier.weight(1f),
@@ -1263,7 +1278,7 @@ fun ChatScreen(
         }
 
         val f = flow
-        Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        CandyCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (f == null) {
                     TextButton(onClick = { flowAction("/candy/flow/request") }) {
@@ -1348,10 +1363,10 @@ fun ChatScreen(
                             )
                         },
                 ) {
-                    Text(
-                        "↩",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                    Icon(
+                        Icons.AutoMirrored.Rounded.Reply,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .align(if (drag < 0f) Alignment.CenterEnd else Alignment.CenterStart)
                             .padding(horizontal = 16.dp)
@@ -1569,7 +1584,7 @@ fun ChatScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Muted("✏️ " + stringResource(R.string.msg_editing) + ": " + ed.text.take(40), Modifier.weight(1f))
-                        TextButton(onClick = { editing = null; input = "" }) { Text("✕") }
+                        AppIconButton(Icons.Rounded.Close, null, { editing = null; input = "" })
                     }
                 }
                 if (quoted != null) {
@@ -1583,7 +1598,7 @@ fun ChatScreen(
                                 (if (quoted.stickerId != null) "😊" else if (quoted.loopId != null) "🎬" else if (quoted.hasImage) "📷 " + quoted.text.take(30) else quoted.text.take(40)),
                             Modifier.weight(1f),
                         )
-                        TextButton(onClick = { replyTo = null }) { Text("✕") }
+                        AppIconButton(Icons.Rounded.Close, null, { replyTo = null })
                     }
                 }
                 if (recording) {
@@ -1614,22 +1629,22 @@ fun ChatScreen(
                                 bitmap = preview.asImageBitmap(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)),
+                                modifier = Modifier.size(72.dp).clip(MaterialTheme.shapes.small),
                             )
                             Spacer(Modifier.width(8.dp))
                         }
                         Muted(stringResource(R.string.chat_image_ready), Modifier.weight(1f))
-                        TextButton(onClick = { pendingImage = null }) { Text("✕") }
+                        AppIconButton(Icons.Rounded.Close, null, { pendingImage = null })
                     }
                 }
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
-                        shape = RoundedCornerShape(26.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.weight(1f),
                     ) {
                         Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { showStickers = true }) { Text("😊", style = MaterialTheme.typography.titleLarge) }
+                            AppIconButton(Icons.Rounded.EmojiEmotions, null, { showStickers = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
                                 if (input.isEmpty()) {
                                     Text(stringResource(R.string.chat_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1643,8 +1658,8 @@ fun ChatScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
-                            TextButton(onClick = { pickImage.launch("image/*") }) { Text("🖼️", style = MaterialTheme.typography.titleLarge) }
-                            TextButton(onClick = { onFlare(peerHash) }) { Text("📸", style = MaterialTheme.typography.titleLarge) }
+                            AppIconButton(Icons.Rounded.Image, null, { pickImage.launch("image/*") }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            AppIconButton(Icons.Rounded.PhotoCamera, null, { onFlare(peerHash) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     val canPost = !busy && (input.isNotBlank() || pendingImage != null)
@@ -1655,10 +1670,10 @@ fun ChatScreen(
                         modifier = Modifier.size(48.dp).clickable(enabled = canPost || (showMic && !busy)) { if (showMic) onMicClick() else send() },
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                if (showMic) "🎙" else "↑",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = if (canPost || showMic) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            Icon(
+                                if (showMic) Icons.Rounded.Mic else Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = null,
+                                tint = if (canPost || showMic) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

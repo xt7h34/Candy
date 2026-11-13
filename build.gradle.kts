@@ -35,8 +35,8 @@ android {
         applicationId = "com.candy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.31"
+        versionCode = 32
+        versionName = "1.32"
         // Where the app looks for newer versions. The build passes it in (-PupdateRepo=owner/name).
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: ""}\"")
         // Public address of the Kanade bot (the tunnel), one line in api-url.txt at the repo root.
@@ -85,6 +85,8 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
+    // real vector icons (rounded/outlined) instead of emoji; R8 strips every icon that is not used
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
