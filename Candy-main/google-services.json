@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "379711522022",
+    "project_id": "candy-c9687",
+    "storage_bucket": "candy-c9687.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:379711522022:android:035ecd1cb851a6a663e727",
+        "android_client_info": {
+          "package_name": "com.candy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGB8I9NAKQRfJ17fjoJpGOmC-NWB2UKCM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
