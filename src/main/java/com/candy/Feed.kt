@@ -252,7 +252,7 @@ fun FeedScreen(
                     }
                 }
             }
-            items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments) }
+            items(posts, key = { it.id }) { PostCard(net, it, onOpenPost, onOpen, onOpenComments, onRemoved = { gone -> posts = posts.filter { x -> x.id != gone } }) }
             val more = next
             if (more != null) {
                 item {

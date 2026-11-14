@@ -1,5 +1,19 @@
 package com.candy
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.pager.PageSize
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.zIndex
+import kotlin.math.abs
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.animation.core.Animatable
@@ -239,48 +253,105 @@ private fun PicBadge(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** A track with several pictures in the feed: three cards fanned out, with how many there are. */
+/**
+ * All the pictures of a track as one fan you can swipe: the picture you are on is in front and the ones next to it peek out
+ * tilted behind it, with a dot for each picture underneath. Every picture is cropped to the same card, so nothing changes
+ * shape while you swipe, and nothing opens when you tap.
+ */
 @Composable
-private fun FanStack(net: Net, post: Post, onClick: () -> Unit) {
-    val shown = minOf(post.imageCount, 3)
-    Box(
-        Modifier.fillMaxWidth().aspectRatio(1.05f).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (shown >= 3) FanCard(net, post, 2, 8f, 70.dp, false)
-        if (shown >= 2) FanCard(net, post, 1, -8f, (-70).dp, false)
-        FanCard(net, post, 0, 0f, 0.dp, true)
-        PicBadge("🖼️ " + post.imageCount, Modifier.align(Alignment.TopEnd).padding(8.dp))
-    }
-}
-
-@Composable
-private fun FanCard(net: Net, post: Post, index: Int, rotation: Float, shift: Dp, front: Boolean) {
-    Box(
-        Modifier
-            .fillMaxWidth(if (front) 0.66f else 0.58f)
-            .fillMaxHeight(if (front) 0.92f else 0.80f)
-            .graphicsLayer {
-                rotationZ = rotation
-                translationX = shift.toPx()
+fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
+    val count = post.imageCount
+    val pager = rememberPagerState(pageCount = { count })
+    // the fan leans the same way in every language
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(
+            modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1.05f)) {
+                val cardW = maxWidth * 0.66f
+                val gap = maxWidth * 0.21f   // how far the middle of the next card is from the middle of the front one
+                HorizontalPager(
+                    state = pager,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = (maxWidth - cardW) / 2),
+                    pageSize = PageSize.Fixed(cardW),
+                    pageSpacing = gap - cardW,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { page ->
+                    val dist = abs(page - pager.currentPage)
+                    Box(
+                        Modifier
+                            .zIndex(10f - dist)
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.92f)
+                            .graphicsLayer {
+                                // read while drawing: swiping never recomposes the card
+                                val t = (pager.currentPage - page) + pager.currentPageOffsetFraction
+                                val a = abs(t)
+                                rotationZ = -8f * t.coerceIn(-1f, 1f)
+                                val k = 1f - 0.12f * a.coerceAtMost(1f)
+                                scaleX = k
+                                scaleY = k
+                                alpha = (2f - a).coerceIn(0f, 1f)
+                            }
+                            .clip(MaterialTheme.shapes.small),
+                    ) {
+                        FanPicture(net, post.id, page, dist == 0)
+                    }
+                }
             }
-            .clip(MaterialTheme.shapes.small),
-    ) {
-        // the front card is the full picture, the two behind it are the small squares
-        PostImageFill(post.id, net.token, !front, index, true)
+            PageDots(count, pager.currentPage)
+        }
     }
 }
 
-/** All the pictures of one track: swipe sideways, with "2/4" on top. */
+/** One card of the fan: the small picture at once, and the full one as soon as the card is the one in front. */
 @Composable
-private fun PostPager(net: Net, p: Post) {
-    val pager = rememberPagerState(pageCount = { p.imageCount })
-    val aspect = (p.sizes.firstOrNull() ?: 1f).coerceIn(0.75f, 1.6f)
-    Box(Modifier.fillMaxWidth().aspectRatio(aspect).clip(MaterialTheme.shapes.small)) {
-        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-            PostImageFill(p.id, net.token, false, page, false)
+private fun FanPicture(net: Net, id: String, index: Int, front: Boolean) {
+    var bmp by remember(id, index) { mutableStateOf<Bitmap?>(null) }
+    var whole by remember(id, index) { mutableStateOf(false) }
+    LaunchedEffect(id, index, front) {
+        if (bmp == null) bmp = MediaCache.load(net.token, id, true, index)
+        if (front && !whole) {
+            val full = MediaCache.load(net.token, id, false, index)
+            if (full != null) {
+                bmp = full
+                whole = true
+            }
         }
-        PicBadge((pager.currentPage + 1).toString() + "/" + p.imageCount, Modifier.align(Alignment.TopEnd).padding(8.dp))
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+        val b = bmp
+        if (b != null) {
+            Image(
+                bitmap = b.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/** One dot per picture; the one you are on stretches into a pill. Past 12 pictures it is just "3/14". */
+@Composable
+private fun PageDots(count: Int, current: Int) {
+    if (count > 12) {
+        Text((current + 1).toString() + "/" + count, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        for (i in 0 until count) {
+            val on = i == current
+            val w by animateDpAsState(if (on) 18.dp else 6.dp, label = "dot-width")
+            val c by animateColorAsState(
+                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                label = "dot-colour",
+            )
+            Box(Modifier.height(6.dp).width(w).clip(CircleShape).background(c))
+        }
     }
 }
 
@@ -464,8 +535,10 @@ fun PostActions(
 }
 
 /**
- * A track in the feed: who and when, the picture, the caption, then like and comment.
+ * A track in the feed: who and when, the picture (or the swipeable fan), the caption, then like and comment.
+ * Nothing opens when you tap the pictures: you swipe them where they are, and the ⋮ menu is right in the card.
  * [onComments] opens the comments sheet; it defaults to [onOpenPost] for screens that do not need the sheet.
+ * [onRemoved] is told when you delete your own track from the menu.
  */
 @Composable
 fun PostCard(
@@ -474,48 +547,103 @@ fun PostCard(
     onOpenPost: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
     onComments: (String) -> Unit = onOpenPost,
+    onRemoved: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var sharing by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf(false) }
     CandyCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpenProfile(post.ownerHash) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Avatar(post.ownerHash, net.token, 42.dp)
-                Column {
-                    NameWithBadge(
-                        post.ownerName.ifBlank { post.ownerHash },
-                        post.ownerVerified,
-                        MaterialTheme.typography.titleSmall,
-                        FontWeight.Bold,
-                    )
-                    Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · " + it } ?: ""))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).clip(MaterialTheme.shapes.small).clickable { onOpenProfile(post.ownerHash) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Avatar(post.ownerHash, net.token, 42.dp)
+                    Column {
+                        NameWithBadge(
+                            post.ownerName.ifBlank { post.ownerHash },
+                            post.ownerVerified,
+                            MaterialTheme.typography.titleSmall,
+                            FontWeight.Bold,
+                        )
+                        Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · " + it } ?: ""))
+                    }
+                }
+                Box {
+                    AppIconButton(Icons.Rounded.MoreVert, null, { menu = true })
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.medium) {
+                        if (post.mine) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.post_delete)) },
+                                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+                                onClick = { menu = false; confirmDelete = true },
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.post_report)) },
+                                leadingIcon = { Icon(Icons.Rounded.Flag, contentDescription = null) },
+                                onClick = { menu = false; reporting = true },
+                            )
+                        }
+                    }
                 }
             }
             if (post.imageCount > 1) {
-                FanStack(net, post) { onOpenPost(post.id) }
+                PostCarousel(net, post)
             } else if (post.hasImage) {
                 Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
-                    PostImage(post.id, net.token, false, aspectOf(post), Modifier.clickable { onOpenPost(post.id) })
+                    PostImage(post.id, net.token, false, aspectOf(post))
                 }
             }
             if (post.caption.isNotBlank()) {
                 Text(
                     taggedText(post.caption, MaterialTheme.colorScheme.primary),
                     style = if (post.hasImage) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.fillMaxWidth().clickable { onOpenPost(post.id) }.padding(horizontal = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 )
             }
             PostActions(net, post.id, post.liked, post.likes, post.saved, post.comments, onComments = { onComments(post.id) }, onShare = { sharing = true })
         }
     }
     if (sharing) SendPostDialog(net, post.id) { sharing = false }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            text = { Text(stringResource(R.string.post_delete_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        scope.launch {
+                            val r = net.post("/candy/post/delete", JSONObject().put("id", post.id))
+                            if (r.ok) onRemoved(post.id) else Toast.makeText(ctx, r.message(ctx), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ) { Text(stringResource(R.string.post_delete)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (reporting) {
+        ReportDialog(
+            onSend = { reason ->
+                reporting = false
+                scope.launch {
+                    val r = net.post("/candy/report", JSONObject().put("type", "post").put("id", post.id).put("reason", reason))
+                    Toast.makeText(ctx, if (r.ok) ctx.getString(R.string.report_sent) else r.message(ctx), Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { reporting = false },
+        )
+    }
 }
 
 /** A track with words only, shown as a coloured square in the grid. */
@@ -831,7 +959,7 @@ fun PostScreen(
                                         MaterialTheme.typography.titleSmall,
                                         FontWeight.Bold,
                                     )
-                                    Muted(p.ownerHash + " · " + agoShort(ctx, p.at) + (p.location?.let { " · 📍 " + it } ?: ""))
+                                    Muted(p.ownerHash + " · " + agoShort(ctx, p.at) + (p.location?.let { " · " + it } ?: ""))
                                 }
                             }
                             Box {
@@ -852,7 +980,7 @@ fun PostScreen(
                             }
                         }
                         if (p.imageCount > 1) {
-                            PostPager(net, p)
+                            PostCarousel(net, p)
                         } else if (p.hasImage) {
                             Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
                                 PostImage(p.id, net.token, false, aspectOf(p))
