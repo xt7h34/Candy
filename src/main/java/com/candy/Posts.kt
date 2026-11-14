@@ -1,5 +1,18 @@
 package com.candy
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.draggable
@@ -279,7 +292,14 @@ const val FAN_CARD_ASPECT = 0.75f
  * nothing opens when you tap.
  */
 @Composable
-fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
+fun PostCarousel(
+    net: Net,
+    post: Post,
+    modifier: Modifier = Modifier,
+    burst: Int = 0,
+    onDoubleTap: () -> Unit = {},
+    onLongPress: (Int) -> Unit = {},
+) {
     val count = post.imageCount
     val scope = rememberCoroutineScope()
     // where the fan is, counted in pictures: 0 is the first, 1.5 is half way from the second to the third, -1 is the last
@@ -297,6 +317,12 @@ fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        .pointerInput(count) {
+                            detectTapGestures(
+                                onDoubleTap = { onDoubleTap() },
+                                onLongPress = { onLongPress(Math.floorMod(base, count)) },
+                            )
+                        }
                         .draggable(
                             orientation = Orientation.Horizontal,
                             state = rememberDraggableState { dx -> scope.launch { pos.snapTo(pos.value - dx / gapPx) } },
@@ -337,6 +363,7 @@ fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
                     }
                 }
                 PicBadge("🖼️ " + count, Modifier.align(Alignment.TopEnd).padding(8.dp))
+                HeartBurst(burst, Modifier.align(Alignment.Center))
             }
             PageDots(count, Math.floorMod(base, count))
         }
@@ -369,6 +396,172 @@ private fun FanPicture(net: Net, id: String, index: Int, front: Boolean) {
             )
         }
     }
+}
+
+/** A big white heart that pops in the middle of a picture and fades: the answer to a double tap. [trigger] goes up with each tap. */
+@Composable
+fun HeartBurst(trigger: Int, modifier: Modifier = Modifier) {
+    val scale = remember { Animatable(0.4f) }
+    val fade = remember { Animatable(0f) }
+    LaunchedEffect(trigger) {
+        if (trigger > 0) {
+            fade.snapTo(1f)
+            scale.snapTo(0.4f)
+            launch { scale.animateTo(1.2f, spring(dampingRatio = 0.4f, stiffness = 500f)) }
+            delay(420)
+            fade.animateTo(0f, tween(260))
+        }
+    }
+    if (fade.value > 0f) {
+        Icon(
+            Icons.Rounded.Favorite,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = modifier.size(96.dp).graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                alpha = fade.value
+            },
+        )
+    }
+}
+
+/**
+ * The pictures of a track as they really are, not cut: full screen, swipe between them, pinch or double tap to zoom,
+ * tap to close. It opens on a long press on the picture.
+ */
+@Composable
+fun PhotoViewer(net: Net, postId: String, count: Int, start: Int, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val pager = rememberPagerState(initialPage = start.coerceIn(0, maxOf(0, count - 1)), pageCount = { count })
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                ZoomablePhoto(net, postId, page, onDismiss)
+            }
+            AppIconButton(
+                Icons.Rounded.Close,
+                null,
+                onDismiss,
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp),
+                tint = Color.White,
+            )
+            if (count > 1) {
+                Text(
+                    (pager.currentPage + 1).toString() + "/" + count,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomablePhoto(net: Net, postId: String, index: Int, onTap: () -> Unit) {
+    var bmp by remember(postId, index) { mutableStateOf<Bitmap?>(null) }
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var box by remember { mutableStateOf(IntSize.Zero) }
+    LaunchedEffect(postId, index) {
+        bmp = MediaCache.load(net.token, postId, true, index)        // the small one at once, the whole one after it
+        val full = MediaCache.load(net.token, postId, false, index)
+        if (full != null) bmp = full
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { box = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = {
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.5f
+                        }
+                    },
+                )
+            }
+            .pointerInput(Unit) {
+                // two fingers zoom, and one finger moves the picture once it is zoomed; at normal size one finger is left to the pager
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val fingers = event.changes.count { it.pressed }
+                        if (fingers >= 2 || scale > 1f) {
+                            val zoom = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            val maxX = box.width * (scale - 1f) / 2f
+                            val maxY = box.height * (scale - 1f) / 2f
+                            offset = if (scale <= 1f) {
+                                Offset.Zero
+                            } else {
+                                Offset((offset.x + pan.x).coerceIn(-maxX, maxX), (offset.y + pan.y).coerceIn(-maxY, maxY))
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val b = bmp
+        if (b != null) {
+            Image(
+                bitmap = b.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+            )
+        } else {
+            CircularProgressIndicator(color = Color.White)
+        }
+    }
+}
+
+/**
+ * The picture or pictures of a post. A double tap likes it (with a heart that pops), and a long press opens them as they
+ * really are, not cut. Nothing opens on a plain tap.
+ */
+@Composable
+private fun PostMedia(net: Net, post: Post, like: LikeState) {
+    var burst by remember(post.id) { mutableStateOf(0) }
+    var viewing by remember(post.id) { mutableStateOf(-1) }
+    if (post.imageCount > 1) {
+        PostCarousel(
+            net,
+            post,
+            burst = burst,
+            onDoubleTap = { like.like(); burst++ },
+            onLongPress = { viewing = it },
+        )
+    } else if (post.hasImage) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .pointerInput(post.id) {
+                    detectTapGestures(
+                        onDoubleTap = { like.like(); burst++ },
+                        onLongPress = { viewing = 0 },
+                    )
+                },
+        ) {
+            PostImage(post.id, net.token, false, aspectOf(post))
+            HeartBurst(burst, Modifier.align(Alignment.Center))
+        }
+    }
+    if (viewing >= 0) PhotoViewer(net, post.id, maxOf(1, post.imageCount), viewing) { viewing = -1 }
 }
 
 /** One round dot for each picture; the one you are on is bigger and rose. */
@@ -486,7 +679,10 @@ object PostImagePrep {
 
 // ───────────────────────── Likes, cards, grid ─────────────────────────
 
-/** One tap target under a post: an icon, and a number or nothing next to it. */
+/**
+ * One tap target: an icon, and a number or nothing next to it ([vertical] puts the number under a bigger icon, the
+ * way the buttons sit on the side of a loop).
+ */
 @Composable
 fun ActionPill(
     icon: ImageVector,
@@ -496,67 +692,123 @@ fun ActionPill(
     label: String? = null,
     tint: Color = MaterialTheme.colorScheme.onSurface,
     iconScale: Float = 1f,
+    vertical: Boolean = false,
 ) {
-    Row(
-        modifier
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = desc }
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale },
-        )
-        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
+    val base = modifier
+        .clip(CircleShape)
+        .clickable(role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = desc }
+    if (vertical) {
+        Column(
+            base.padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(32.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale },
+            )
+            if (label != null) Text(label, style = MaterialTheme.typography.labelMedium, color = tint)
+        }
+    } else {
+        Row(
+            base.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale },
+            )
+            if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
+        }
+    }
+}
+
+/**
+ * The like of one post or loop: whether you like it, how many do, and the little pop of the heart. The heart button and
+ * the double tap on the picture share it, so they always agree.
+ */
+@Stable
+class LikeState(
+    private val net: Net,
+    private val postId: String,
+    private val scope: CoroutineScope,
+    private val buzz: () -> Unit,
+    initialLiked: Boolean,
+    initialLikes: Int,
+) {
+    var liked by mutableStateOf(initialLiked)
+        private set
+    var likes by mutableStateOf(initialLikes)
+        private set
+    val pop = Animatable(1f)
+
+    fun toggle() {
+        val was = liked
+        if (!was) {
+            buzz()   // a small tap when you like
+            scope.launch {
+                pop.animateTo(1.3f, tween(90))
+                pop.animateTo(1f, spring(dampingRatio = 0.45f))
+            }
+        }
+        liked = !was
+        likes += if (was) -1 else 1
+        scope.launch {
+            val r = net.post(if (was) "/candy/unlike" else "/candy/like", JSONObject().put("id", postId))
+            if (r.ok) {
+                likes = r.body?.optInt("likes", likes) ?: likes
+            } else {
+                liked = was
+                likes += if (was) 1 else -1
+            }
+        }
+    }
+
+    /** A double tap likes, and never takes the like back. */
+    fun like() {
+        if (!liked) toggle()
+    }
+}
+
+@Composable
+fun rememberLikeState(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int): LikeState {
+    val scope = rememberCoroutineScope()
+    val haptic = rememberAppHaptic()
+    return remember(postId) {
+        LikeState(net, postId, scope, { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }, initialLiked, initialLikes)
     }
 }
 
 /** The like heart with its number. It pops when you like. */
 @Composable
-fun LikeButton(net: Net, postId: String, initialLiked: Boolean, initialLikes: Int, idleTint: Color = MaterialTheme.colorScheme.onSurface) {
-    val scope = rememberCoroutineScope()
-    val haptic = rememberAppHaptic()
-    var liked by remember(postId) { mutableStateOf(initialLiked) }
-    var likes by remember(postId) { mutableStateOf(initialLikes) }
-    val pop = remember { Animatable(1f) }
-
+fun LikeButton(
+    net: Net,
+    postId: String,
+    initialLiked: Boolean,
+    initialLikes: Int,
+    idleTint: Color = MaterialTheme.colorScheme.onSurface,
+    vertical: Boolean = false,
+    state: LikeState = rememberLikeState(net, postId, initialLiked, initialLikes),
+) {
     ActionPill(
-        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+        icon = if (state.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
         desc = stringResource(R.string.like_desc),
-        label = likes.toString(),
-        tint = if (liked) Color(0xFFFF4D6D) else idleTint,
-        iconScale = pop.value,
-        onClick = {
-            val was = liked
-            if (!was) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)   // a small tap when you like
-                scope.launch {
-                    pop.animateTo(1.3f, tween(90))
-                    pop.animateTo(1f, spring(dampingRatio = 0.45f))
-                }
-            }
-            liked = !was
-            likes += if (was) -1 else 1
-            scope.launch {
-                val r = net.post(if (was) "/candy/unlike" else "/candy/like", JSONObject().put("id", postId))
-                if (r.ok) {
-                    likes = r.body?.optInt("likes", likes) ?: likes
-                } else {
-                    liked = was
-                    likes += if (was) 1 else -1
-                }
-            }
-        },
+        label = state.likes.toString(),
+        tint = if (state.liked) Color(0xFFFF4D6D) else idleTint,
+        iconScale = state.pop.value,
+        vertical = vertical,
+        onClick = { state.toggle() },
     )
 }
 
 @Composable
-fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = MaterialTheme.colorScheme.onSurface) {
+fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = MaterialTheme.colorScheme.onSurface, vertical: Boolean = false) {
     val scope = rememberCoroutineScope()
     val haptic = rememberAppHaptic()
     var saved by remember(postId) { mutableStateOf(initialSaved) }
@@ -565,6 +817,7 @@ fun SaveButton(net: Net, postId: String, initialSaved: Boolean, tint: Color = Ma
         icon = if (saved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
         desc = stringResource(R.string.save_desc),
         tint = if (saved) MaterialTheme.colorScheme.primary else tint,
+        vertical = vertical,
         onClick = {
             val want = !saved
             saved = want
@@ -588,6 +841,7 @@ fun PostActions(
     comments: Int,
     onComments: () -> Unit,
     onShare: () -> Unit,
+    like: LikeState = rememberLikeState(net, id, liked, likes),
 ) {
     Row(
         Modifier.fillMaxWidth(),
@@ -595,7 +849,7 @@ fun PostActions(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LikeButton(net, id, liked, likes)
+            LikeButton(net, id, liked, likes, state = like)
             ActionPill(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.comment_desc), onComments, label = comments.toString())
             ActionPill(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.share_desc), onShare)
         }
@@ -624,6 +878,7 @@ fun PostCard(
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var reporting by remember { mutableStateOf(false) }
+    val like = rememberLikeState(net, post.id, post.liked, post.likes)
     CandyCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -665,13 +920,7 @@ fun PostCard(
                     }
                 }
             }
-            if (post.imageCount > 1) {
-                PostCarousel(net, post)
-            } else if (post.hasImage) {
-                Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
-                    PostImage(post.id, net.token, false, aspectOf(post))
-                }
-            }
+            PostMedia(net, post, like)
             if (post.caption.isNotBlank()) {
                 Text(
                     taggedText(post.caption, MaterialTheme.colorScheme.primary),
@@ -679,7 +928,7 @@ fun PostCard(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 )
             }
-            PostActions(net, post.id, post.liked, post.likes, post.saved, post.comments, onComments = { onComments(post.id) }, onShare = { sharing = true })
+            PostActions(net, post.id, post.liked, post.likes, post.saved, post.comments, onComments = { onComments(post.id) }, onShare = { sharing = true }, like = like)
         }
     }
     if (sharing) SendPostDialog(net, post.id) { sharing = false }
@@ -1086,6 +1335,7 @@ fun PostScreen(
             if (notice.isNotEmpty()) Muted(notice)
             val p = post
             if (p != null) {
+                val like = rememberLikeState(net, p.id, p.liked, p.likes)
                 CandyCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
@@ -1125,13 +1375,7 @@ fun PostScreen(
                                 }
                             }
                         }
-                        if (p.imageCount > 1) {
-                            PostCarousel(net, p)
-                        } else if (p.hasImage) {
-                            Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)) {
-                                PostImage(p.id, net.token, false, aspectOf(p))
-                            }
-                        }
+                        PostMedia(net, p, like)
                         if (p.caption.isNotBlank()) {
                             Text(
                                 taggedText(p.caption, MaterialTheme.colorScheme.primary),
@@ -1139,7 +1383,7 @@ fun PostScreen(
                                 modifier = Modifier.padding(horizontal = 4.dp),
                             )
                         }
-                        PostActions(net, p.id, p.liked, p.likes, p.saved, p.comments, onComments = { onOpenComments(p.id) }, onShare = { sharing = true })
+                        PostActions(net, p.id, p.liked, p.likes, p.saved, p.comments, onComments = { onOpenComments(p.id) }, onShare = { sharing = true }, like = like)
                     }
                 }
 

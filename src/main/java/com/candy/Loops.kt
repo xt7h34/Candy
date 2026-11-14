@@ -1,5 +1,21 @@
 package com.candy
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +26,8 @@ import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -140,9 +158,23 @@ fun LoopsScreen(
         }
 
         if (onBack != null) {
-            TextButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).systemBarsPadding()) {
-                Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .systemBarsPadding()
+                    .padding(8.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f)),
+            ) {
+                AppIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), onBack, tint = Color.White)
             }
+        } else if (loops.isNotEmpty()) {
+            Text(
+                stringResource(R.string.nav_loops),
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.align(Alignment.TopStart).systemBarsPadding().padding(horizontal = Space.lg, vertical = Space.md),
+            )
         }
     }
 }
@@ -162,6 +194,10 @@ private fun LoopPage(
     var firstFrame by remember(loop.id) { mutableStateOf(false) }
     var playing by remember(loop.id) { mutableStateOf(true) }
     var sending by remember(loop.id) { mutableStateOf(false) }
+    var burst by remember(loop.id) { mutableStateOf(0) }
+    var expanded by remember(loop.id) { mutableStateOf(false) }
+    val like = rememberLikeState(net, loop.id, loop.liked, loop.likes)
+    val inset = LocalBarInset.current
     val videoPath = "/candy/media?id=" + Uri.encode(loop.id) + "&video=1"
 
     LaunchedEffect(loop.id) { poster = MediaCache.load(net.token, loop.id, false) }
@@ -202,56 +238,105 @@ private fun LoopPage(
             CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
 
-        // tap anywhere to pause or play
+        // one tap pauses or plays, two taps like
         Box(
-            Modifier.fillMaxSize().clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { playing = !playing },
+            Modifier.fillMaxSize().pointerInput(loop.id) {
+                detectTapGestures(
+                    onTap = { playing = !playing },
+                    onDoubleTap = { like.like(); burst++ },
+                )
+            },
         )
 
-        Column(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth(0.72f).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        // a soft dark edge top and bottom so the white writing can always be read
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(300.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
+        )
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(130.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
+        )
+
+        HeartBurst(burst, Modifier.align(Alignment.Center))
+        AnimatedVisibility(
+            visible = !playing,
+            modifier = Modifier.align(Alignment.Center),
+            enter = fadeIn() + scaleIn(initialScale = 0.7f),
+            exit = fadeOut() + scaleOut(targetScale = 1.2f),
         ) {
-            Row(
-                Modifier.clickable { onOpenProfile(loop.ownerHash) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Avatar(loop.ownerHash, net.token, 36.dp)
-                Text(
-                    loop.ownerName.ifBlank { loop.ownerHash },
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (loop.caption.isNotBlank()) {
-                Text(loop.caption, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.45f)) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.padding(18.dp).size(44.dp))
             }
         }
 
         Column(
-            Modifier.align(Alignment.BottomEnd).padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.74f)
+                .padding(start = Space.lg, end = Space.sm, bottom = Space.lg + inset),
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
-            LikeButton(net, loop.id, loop.liked, loop.likes, idleTint = Color.White)
+            Row(
+                Modifier.clip(CircleShape).clickable { onOpenProfile(loop.ownerHash) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                Avatar(loop.ownerHash, net.token, 38.dp, 0, Modifier.border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape))
+                Text(
+                    loop.ownerName.ifBlank { loop.ownerHash },
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (loop.ownerVerified) VerifiedBadge(14.dp)
+            }
+            if (loop.caption.isNotBlank()) {
+                // tap the writing to read all of it
+                Text(
+                    loop.caption,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = if (expanded) 12 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { expanded = !expanded },
+                )
+            }
+        }
+
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(end = Space.sm, bottom = Space.lg + inset),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            LikeButton(net, loop.id, loop.liked, loop.likes, idleTint = Color.White, vertical = true, state = like)
             ActionPill(
                 androidx.compose.material.icons.Icons.Outlined.ChatBubbleOutline,
                 stringResource(R.string.comment_desc),
                 { onOpenComments(loop.id) },
                 label = loop.comments.toString(),
                 tint = Color.White,
+                vertical = true,
             )
             ActionPill(
                 androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Send,
                 stringResource(R.string.share_desc),
                 { sending = true },
                 tint = Color.White,
+                vertical = true,
             )
-            SaveButton(net, loop.id, loop.saved, Color.White)
+            SaveButton(net, loop.id, loop.saved, Color.White, vertical = true)
             Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
         }
 
@@ -347,7 +432,7 @@ fun LoopsSection(net: Net, hash: String, refreshKey: Int, onOpen: (String) -> Un
                 for (l in row) {
                     Box(Modifier.weight(1f).clickable { onOpen(l.id) }) {
                         PostImage(l.id, net.token, true, 1f)
-                        Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp))
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(24.dp))
                     }
                 }
                 for (i in row.size until 3) Spacer(Modifier.weight(1f))
