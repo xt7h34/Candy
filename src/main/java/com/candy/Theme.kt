@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -122,21 +124,29 @@ object CandyBrand {
     fun hairline(): Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
 }
 
+/** Inter for Latin letters. It has no Arabic, so Arabic text uses the phone's own Arabic font, as before. */
+private val InterFamily = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold),
+)
+
 // No letterSpacing anywhere: it breaks the joined letters of Arabic.
 private val CandyTypography = Typography(
-    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
-    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
-    headlineSmall = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
-    bodySmall = TextStyle(fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
-    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
-    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
-    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    displaySmall = TextStyle(fontFamily = InterFamily, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
+    headlineLarge = TextStyle(fontFamily = InterFamily, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontFamily = InterFamily, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(fontFamily = InterFamily, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontFamily = InterFamily, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+    bodyMedium = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
+    bodySmall = TextStyle(fontFamily = InterFamily, fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
+    labelLarge = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    labelMedium = TextStyle(fontFamily = InterFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    labelSmall = TextStyle(fontFamily = InterFamily, fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
 @Composable

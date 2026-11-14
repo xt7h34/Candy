@@ -1,5 +1,9 @@
 package com.candy
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ColumnScope
@@ -92,8 +96,26 @@ fun Field(
 
 @Composable
 fun ErrorText(message: String) {
-    if (message.isNotBlank()) {
+    if (message.isBlank()) return
+    val ctx = LocalContext.current
+    // when the bot cannot be reached the app shows a picture instead of a sentence
+    if (message == ctx.getString(R.string.err_offline) || message == ctx.getString(R.string.err_generic)) {
+        OfflineArt(message)
+    } else {
         Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** The picture of a bot that is switched off. [description] is read out by screen readers. */
+@Composable
+fun OfflineArt(description: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical = Space.md), contentAlignment = Alignment.Center) {
+        Image(
+            painterResource(R.drawable.bot_offline),
+            contentDescription = description,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(180.dp).clip(MaterialTheme.shapes.large),
+        )
     }
 }
 
@@ -274,26 +296,17 @@ fun taggedText(text: String, color: Color): AnnotatedString = buildAnnotatedStri
     append(text.substring(last))
 }
 
-/** The blue check next to a verified account (drawn, so it sits in the middle of the circle). */
+/** The official check next to a verified account (see [BadgeIcon]). */
 @Composable
 fun VerifiedBadge(size: Dp = 16.dp) {
-    Canvas(Modifier.size(size).clip(CircleShape).background(Color(0xFF1D9BF0))) {
-        val w = this.size.width
-        val h = this.size.height
-        val check = Path().apply {
-            moveTo(w * 0.27f, h * 0.52f)
-            lineTo(w * 0.44f, h * 0.68f)
-            lineTo(w * 0.74f, h * 0.34f)
-        }
-        drawPath(check, Color.White, style = Stroke(width = w * 0.12f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
+    BadgeIcon("check", size)
 }
 
 /** A name, with the blue check after it when the account is verified. */
 @Composable
-fun NameWithBadge(name: String, verified: Boolean, style: TextStyle, fontWeight: FontWeight? = null) {
+fun NameWithBadge(name: String, verified: Boolean, style: TextStyle, fontWeight: FontWeight? = null, badge: Badge? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(name, style = style, fontWeight = fontWeight)
-        if (verified) VerifiedBadge()
+        UserBadge(verified, badge)
     }
 }

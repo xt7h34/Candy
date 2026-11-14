@@ -67,6 +67,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
     var name by remember { mutableStateOf("") }
     var peerHash by remember { mutableStateOf(hash) }
     var verified by remember { mutableStateOf(false) }
+    var badge by remember { mutableStateOf<Badge?>(null) }
     var theme by remember { mutableStateOf("default") }
     var disappear by remember { mutableStateOf(0L) }
     var disappearMode by remember { mutableStateOf("sent") }
@@ -102,6 +103,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             name = peer?.optString("name").orEmpty()
             peerHash = peer?.optString("hash").orEmpty().ifEmpty { hash }
             verified = peer?.optBoolean("verified") == true
+            badge = peer?.optJSONObject("badge").toBadge()
             hideSeen = r.body?.optBoolean("hideSeen") == true
             apply(r.body?.optJSONObject("settings"))
         } else {
@@ -133,7 +135,7 @@ fun ChatSettingsScreen(net: Net, hash: String, onBack: () -> Unit, onOpenProfile
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Avatar(peerHash, net.token, 112.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
-            NameWithBadge(shown, verified, MaterialTheme.typography.headlineSmall, FontWeight.SemiBold)
+            NameWithBadge(shown, verified, MaterialTheme.typography.headlineSmall, FontWeight.SemiBold, badge)
             Muted(peerHash)
             if (nick.isNotBlank() && name.isNotBlank()) Muted(name)
             OutlinedButton(onClick = { onOpenProfile(peerHash) }, shape = CircleShape) {

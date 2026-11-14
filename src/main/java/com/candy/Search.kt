@@ -1,5 +1,18 @@
 package com.candy
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.ImeAction
+import kotlinx.coroutines.delay
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,9 +54,11 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
     var popular by remember { mutableStateOf<List<CUser>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var suggested by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val r = net.get("/candy/suggestions")
+        suggested = true
         if (r.ok) {
             newAccounts = r.body?.optJSONArray("newAccounts").toUsers()
             popular = r.body?.optJSONArray("popular").toUsers()
@@ -60,35 +75,59 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
         }
     }
 
+    // it searches by itself a moment after you stop typing, and the list of suggestions comes back when the box is empty
+    LaunchedEffect(query) {
+        if (query.isBlank()) {
+            results = null
+        } else {
+            delay(400)
+            search()
+        }
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(bottom = LocalBarInset.current),
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Field(
-                    stringResource(R.string.search_hint), query, { query = it },
-                    modifier = Modifier.weight(1f),
+            Column(Modifier.fillMaxWidth().padding(top = Space.md), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text(stringResource(R.string.search_hint)) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) AppIconButton(Icons.Rounded.Close, null, { query = "" })
+                    },
+                    singleLine = true,
+                    shape = CircleShape,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank() && !busy) search() }),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = { search() }, enabled = !busy && query.isNotBlank()) {
-                    Text(stringResource(R.string.search_go))
-                }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.lg))
             }
         }
         item { ErrorText(error) }
         val found = results
         if (found != null) {
             if (found.isEmpty()) {
-                item { Muted(stringResource(R.string.search_none), Modifier.padding(vertical = 16.dp)) }
+                item {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = Space.xxl),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Space.sm),
+                    ) {
+                        Icon(Icons.Rounded.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
+                        Muted(stringResource(R.string.search_none))
+                    }
+                }
             } else {
                 items(found) { UserRow(it, net.token, onOpen) }
             }
         } else {
+            if (!suggested) item { SkeletonCards(3, false) }
             if (newAccounts.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.search_new)) }
                 items(newAccounts) { UserRow(it, net.token, onOpen) }

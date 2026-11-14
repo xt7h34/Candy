@@ -315,6 +315,7 @@ private fun ProfileInfo(u: CUser) {
         u.verified,
         MaterialTheme.typography.headlineMedium,
         FontWeight.SemiBold,
+        badge = u.badge,
     )
     Text(u.hash, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
     if (u.followsMe && !u.isMe) Muted(stringResource(R.string.prof_follows_you))

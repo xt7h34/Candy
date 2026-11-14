@@ -1,5 +1,11 @@
 package com.candy
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleEventObserver
@@ -224,6 +230,7 @@ sealed class Dest {
     object Settings : Dest()
     object KanadeAccount : Dest()
     object Subscriptions : Dest()
+    object Badge : Dest()
     object ManageAccount : Dest()
     object Accessibility : Dest()
     object Saved : Dest()
@@ -433,6 +440,18 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
             }
         }
     } else {
+        // the bar slides away while you scroll down a list, and comes back as soon as you scroll up (not on the loops)
+        var barHidden by remember { mutableStateOf(false) }
+        LaunchedEffect(tab, stack.size) { barHidden = false }
+        val barHide by animateFloatAsState(if (barHidden) 1f else 0f, label = "bar-hide")
+        val barScroll = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (available.y < -14f) barHidden = true else if (available.y > 14f) barHidden = false
+                    return Offset.Zero
+                }
+            }
+        }
         Scaffold { pad ->
             // with the bar on screen the content runs underneath it, and each screen leaves room at its end
             val dir = LocalLayoutDirection.current
@@ -445,7 +464,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
             } else {
                 pad
             }
-            Box(Modifier.padding(contentPad).fillMaxSize()) {
+            Box(Modifier.padding(contentPad).fillMaxSize().then(if (tab == 1) Modifier else Modifier.nestedScroll(barScroll))) {
                 CompositionLocalProvider(LocalBarInset provides barInset) {
                     if (top != null) {
                         when (top) {
@@ -506,6 +525,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onPrivacy = { stack.add(Dest.AccountPrivacy) },
                                 onBubbles = { stack.add(Dest.Bubbles) },
                                 onBlocks = { stack.add(Dest.Blocks) },
+                                onBadge = { stack.add(Dest.Badge) },
                                 onAccessibility = { stack.add(Dest.Accessibility) },
                                 onSignOut = onSignOut,
                             )
@@ -516,6 +536,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onManage = { stack.add(Dest.ManageAccount) },
                             )
                             Dest.Subscriptions -> SubscriptionScreen(net, back)
+                            Dest.Badge -> BadgeScreen(net, back, onSubscriptions = { stack.add(Dest.Subscriptions) })
                             Dest.ManageAccount -> ManageAccountScreen(
                                 net = net,
                                 onBack = back,
@@ -592,7 +613,10 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                         selected = tab,
                         unread = unread,
                         onSelect = { stack.clear(); tab = it },
-                        modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barPx = it.height },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { barPx = it.height }
+                            .graphicsLayer { translationY = barHide * size.height * 1.4f },
                     )
                 }
             }

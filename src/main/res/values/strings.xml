@@ -391,4 +391,15 @@
     <string name="loop_cover_use">Use this cover</string>
     <string name="post_crop_title">Choose the part that shows</string>
     <string name="post_crop_hint">Tap a photo, then drag it to choose the part that shows.</string>
+    <string name="badge_title">Badge</string>
+    <string name="badge_row_sub">The mark next to your name</string>
+    <string name="badge_current">Your badge</string>
+    <string name="badge_choose">Choose your badge</string>
+    <string name="badge_color">Colour</string>
+    <string name="badge_color_default">Default</string>
+    <string name="badge_color_locked">Colours are for Elite members and officially verified accounts.</string>
+    <string name="badge_none_title">No badge yet</string>
+    <string name="badge_none_desc">Subscribe to a Kanade plan and a badge appears next to your name.</string>
+    <string name="badge_get_plan">See plans</string>
+    <string name="badge_more">More badges with a higher plan</string>
 </resources>

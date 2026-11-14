@@ -897,6 +897,7 @@ fun PostCard(
                             post.ownerVerified,
                             MaterialTheme.typography.titleSmall,
                             FontWeight.Bold,
+                            badge = post.ownerBadge,
                         )
                         Muted(post.ownerHash + " · " + agoShort(ctx, post.at) + (post.location?.let { " · " + it } ?: ""))
                     }
@@ -1354,6 +1355,7 @@ fun PostScreen(
                                         p.ownerVerified,
                                         MaterialTheme.typography.titleSmall,
                                         FontWeight.Bold,
+                                        badge = p.ownerBadge,
                                     )
                                     Muted(p.ownerHash + " · " + agoShort(ctx, p.at) + (p.location?.let { " · " + it } ?: ""))
                                 }

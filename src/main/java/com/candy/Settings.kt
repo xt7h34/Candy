@@ -256,6 +256,7 @@ fun SettingsScreen(
     onPrivacy: () -> Unit,
     onBubbles: () -> Unit,
     onBlocks: () -> Unit,
+    onBadge: () -> Unit,
     onAccessibility: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -280,6 +281,12 @@ fun SettingsScreen(
             SettingsRow(stringResource(R.string.mem_title), emoji = "🗂️", onClick = onMemories)
             SettingsRow(stringResource(R.string.set_messages), emoji = "💬", onClick = { messages = true })
             SettingsRow(stringResource(R.string.set_privacy), emoji = "🔒", onClick = onPrivacy)
+            SettingsRow(
+                stringResource(R.string.badge_title),
+                subtitle = stringResource(R.string.badge_row_sub),
+                icon = { BadgeIcon("crown", 28.dp) },
+                onClick = onBadge,
+            )
             SettingsRow(stringResource(R.string.prof_bubbles), emoji = "🫧", onClick = onBubbles)
             SettingsRow(stringResource(R.string.set_blocks), emoji = "🚫", onClick = onBlocks)
             GroupDivider()

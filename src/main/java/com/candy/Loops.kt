@@ -124,10 +124,11 @@ fun LoopsScreen(
                 if (loading) {
                     CircularProgressIndicator()
                 } else {
-                    Text(
-                        error.ifEmpty { stringResource(R.string.loops_empty) },
-                        color = if (error.isEmpty()) Color.White else MaterialTheme.colorScheme.error,
-                    )
+                    if (error.isEmpty()) {
+                        Text(stringResource(R.string.loops_empty), color = Color.White)
+                    } else {
+                        ErrorText(error)
+                    }
                 }
             }
         } else {
@@ -297,7 +298,7 @@ private fun LoopPage(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (loop.ownerVerified) VerifiedBadge(14.dp)
+                UserBadge(loop.ownerVerified, loop.ownerBadge, 16.dp)
             }
             if (loop.caption.isNotBlank()) {
                 // tap the writing to read all of it

@@ -391,4 +391,15 @@
     <string name="loop_cover_use">استخدم الغلاف ده</string>
     <string name="post_crop_title">اختار الجزء اللي هيظهر</string>
     <string name="post_crop_hint">اضغط على الصورة وحرّكها عشان تختار الجزء اللي هيظهر.</string>
+    <string name="badge_title">الشارة</string>
+    <string name="badge_row_sub">علامتك جنب اسمك</string>
+    <string name="badge_current">شارتك الحالية</string>
+    <string name="badge_choose">اختار شارتك</string>
+    <string name="badge_color">اللون</string>
+    <string name="badge_color_default">الافتراضي</string>
+    <string name="badge_color_locked">الألوان لمشتركي الإليت والحسابات الموثقة رسميًا.</string>
+    <string name="badge_none_title">لسه مفيش شارة</string>
+    <string name="badge_none_desc">اشترك في باقة كندا وهتظهرلك شارة جنب اسمك.</string>
+    <string name="badge_get_plan">شوف الباقات</string>
+    <string name="badge_more">شارات أكتر مع باقة أعلى</string>
 </resources>

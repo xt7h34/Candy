@@ -113,6 +113,7 @@ fun CommentsSheet(
                                 c.ownerVerified,
                                 MaterialTheme.typography.labelLarge,
                                 FontWeight.Bold,
+                                badge = c.ownerBadge,
                             )
                             Text(
                                 taggedText(c.text, MaterialTheme.colorScheme.primary),
