@@ -1,5 +1,15 @@
 package com.candy
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Lock
@@ -153,64 +163,114 @@ private fun rememberLoops(net: Net, hash: String, refreshKey: Int): List<Post> {
     return loops
 }
 
-/** The top of a profile: the first loop blurred behind the photo, name, hash, vibe and counts. */
-@Composable
-private fun ProfileHero(net: Net, backdropId: String?, content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxWidth()) {
-        Box(
-            Modifier.matchParentSize().background(
-                Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), Color.Transparent),
-                ),
-            ),
-        )
-        if (backdropId != null) LoopBackdrop(net, backdropId, Modifier.matchParentSize())
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = Space.lg).padding(top = Space.md, bottom = Space.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            content = content,
-        )
+/**
+ * The pull of the loops header. Pull the page down while you are at the top and the header grows taller;
+ * scroll the page up and it shrinks back first, before the page itself starts to move.
+ */
+@Stable
+private class LoopHeaderState(private val maxExtraPx: Float) {
+    var extra by mutableStateOf(0f)
+
+    val connection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val dy = available.y
+            if (dy < 0f && extra > 0f) {
+                val use = maxOf(dy, -extra)
+                extra += use
+                return Offset(0f, use)
+            }
+            return Offset.Zero
+        }
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            val dy = available.y
+            if (dy > 0f && extra < maxExtraPx) {
+                val use = minOf(dy, maxExtraPx - extra)
+                extra += use
+                return Offset(0f, use)
+            }
+            return Offset.Zero
+        }
     }
 }
 
-/** The loops of one person as tall cards in a row, under their own title, each with how long ago it was posted. */
 @Composable
-private fun LoopStrip(net: Net, loops: List<Post>, onOpen: (String) -> Unit) {
+private fun rememberLoopHeader(): LoopHeaderState {
+    val maxExtra = with(LocalDensity.current) { 140.dp.toPx() }
+    return remember { LoopHeaderState(maxExtra) }
+}
+
+/**
+ * The loops of one person as tall cards across the top, each with how long ago it was posted.
+ * It comes in at its normal size, grows when you pull the page down at the top, and as the page scrolls it
+ * gets shorter, fainter and blurred (the blur needs Android 12).
+ */
+@Composable
+private fun LoopsHeader(net: Net, loops: List<Post>, header: LoopHeaderState, scroll: ScrollState, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-        Text(
-            stringResource(R.string.nav_loops),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = Space.lg),
-        )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.lg),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            for (l in loops) {
-                Box(
-                    Modifier
-                        .width(LoopCardW)
-                        .height(LoopCardH)
-                        .clip(MaterialTheme.shapes.large)
-                        .clickable { onOpen(l.id) },
-                ) {
-                    PostImage(l.id, net.token, true, LoopCardW / LoopCardH)
+    val density = LocalDensity.current
+    val baseH = LoopCardH + 32.dp
+    val basePx = with(density) { baseH.toPx() }
+    val extraDp = with(density) { header.extra.toDp() }
+    val cardH = LoopCardH + extraDp
+    val cardW = LoopCardW * (cardH.value / LoopCardH.value)
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(baseH + extraDp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), Color.Transparent),
+                ),
+            ),
+    ) {
+        if (loops.isNotEmpty()) {
+            LoopBackdrop(net, loops[0].id, Modifier.matchParentSize())
+            Row(
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        // all of this is read while drawing, so scrolling never recomposes the screen
+                        val s = scroll.value.toFloat()
+                        val p = (s / basePx).coerceIn(0f, 1f)
+                        val k = 1f - 0.3f * p
+                        scaleX = k
+                        scaleY = k
+                        transformOrigin = TransformOrigin(0.5f, 0f)
+                        translationY = s * 0.4f
+                        alpha = 1f - 0.55f * p
+                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && p > 0.02f) BlurEffect(24f * p, 24f * p) else null
+                    }
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for (l in loops) {
                     Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+                        Modifier
+                            .width(cardW)
+                            .height(cardH)
+                            .clip(MaterialTheme.shapes.large)
+                            .clickable { onOpen(l.id) },
+                    ) {
+                        PostImage(l.id, net.token, true, LoopCardW / LoopCardH)
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+                                ),
                             ),
-                        ),
-                    )
-                    Text(
-                        agoShort(ctx, l.at),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
-                    )
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp))
+                        )
+                        Text(
+                            agoShort(ctx, l.at),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                        )
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp))
+                    }
                 }
             }
         }
@@ -334,7 +394,9 @@ fun ProfileScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    val scroll = rememberScrollState()
+    val header = rememberLoopHeader()
+    Column(Modifier.fillMaxSize().nestedScroll(header.connection).verticalScroll(scroll)) {
         ScreenHeader(hash, onBack)
         if (loading && user == null) Loading()
         if (error.isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
@@ -343,17 +405,17 @@ fun ProfileScreen(
             // a private account you do not follow, or someone you blocked: no tracks, loops, stages or drifts
             val hidden = u.locked || u.blockedByMe
             val loops = rememberLoops(net, u.hash, reload)
-            ProfileHero(net, loops.firstOrNull()?.id) {
+            LoopsHeader(net, loops, header, scroll) { id -> onOpenLoop(u.hash, id) }
+            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
                 Avatar(u.hash, net.token, 96.dp, 0, Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape))
-                ProfileInfo(u)
-                CountsRow(u, null, null)
             }
-            if (loops.isNotEmpty()) LoopStrip(net, loops) { id -> onOpenLoop(u.hash, id) }
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                ProfileInfo(u)
+                CountsRow(u, null, null)
                 if (!u.isMe && mutuals.isNotEmpty()) {
                     MutualCircles(net, mutuals) { onMutuals(u.hash) }
                 }
@@ -568,8 +630,10 @@ fun MeScreen(
         }
     }
 
+    val scroll = rememberScrollState()
+    val header = rememberLoopHeader()
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().nestedScroll(header.connection).verticalScroll(scroll)) {
         val data = me
         if (data == null) {
             if (error.isEmpty()) Loading() else Column(Modifier.padding(16.dp)) { ErrorText(error) }
@@ -580,22 +644,17 @@ fun MeScreen(
             // the drift lives in a bubble above the photo (your newest one that is still alive)
             val latestDrift = data.optJSONArray("drifts").toDrifts().maxByOrNull { it.postedAt }
             val loops = rememberLoops(net, u.hash, reload + refreshKey)
-            ProfileHero(net, loops.firstOrNull()?.id) {
-                Spacer(Modifier.height(48.dp))   // room for the settings button at the top
+            Box(Modifier.fillMaxWidth()) {
+                LoopsHeader(net, loops, header, scroll) { id -> onOpenLoop(u.hash, id) }
                 DriftBubble(
                     text = latestDrift?.text,
                     onClick = { if (latestDrift != null) editingDrift = latestDrift else composing = true },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp, start = 16.dp, end = 16.dp),
                 )
-                AvatarEditor(net, u.hash, data.optJSONObject("avatar"), onAddStage = onNewStage) { reload++ }
-                ProfileInfo(u)
-                CountsRow(u, { onUsers("followers") }, { onUsers("following") })
-                FilledTonalButton(onClick = { editingVibe = true }, shape = CircleShape) {
-                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(Space.sm))
-                    Text(stringResource(R.string.prof_edit_vibe))
-                }
             }
-            if (loops.isNotEmpty()) LoopStrip(net, loops) { id -> onOpenLoop(u.hash, id) }
+            Box(Modifier.fillMaxWidth().overlapUp(48.dp), contentAlignment = Alignment.TopCenter) {
+                AvatarEditor(net, u.hash, data.optJSONObject("avatar"), onAddStage = onNewStage) { reload++ }
+            }
 
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = LocalBarInset.current),
@@ -603,6 +662,13 @@ fun MeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 ErrorText(error)
+                ProfileInfo(u)
+                CountsRow(u, { onUsers("followers") }, { onUsers("following") })
+                FilledTonalButton(onClick = { editingVibe = true }, shape = CircleShape) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(stringResource(R.string.prof_edit_vibe))
+                }
 
                 PostsSection(net, null, reload + refreshKey, onOpenPost)
 
