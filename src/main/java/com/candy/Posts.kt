@@ -1,5 +1,19 @@
 package com.candy
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
+import androidx.compose.ui.BiasAlignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Dialog
+import kotlin.math.roundToInt
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -253,15 +267,24 @@ private fun PicBadge(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** The front card of the fan is this share of the stack's width, and 3 wide for 4 tall. The post composer crops to the same shape. */
+private const val FAN_FRONT = 0.66f
+private const val FAN_STACK_ASPECT = 1.05f
+const val FAN_CARD_ASPECT = 0.75f
+
 /**
- * All the pictures of a track as one fan you can swipe: the picture you are on is in front and the ones next to it peek out
- * tilted behind it, with a dot for each picture underneath. Every picture is cropped to the same card, so nothing changes
- * shape while you swipe, and nothing opens when you tap.
+ * All the pictures of a track as one fan: the picture you are on is always in the middle with one on each side, tilted
+ * behind it, and you swipe either way for ever (after the last one comes the first again). A dot for each picture
+ * underneath, the one you are on bigger. Every picture is cropped to the same card, so nothing changes shape, and
+ * nothing opens when you tap.
  */
 @Composable
 fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
     val count = post.imageCount
-    val pager = rememberPagerState(pageCount = { count })
+    val scope = rememberCoroutineScope()
+    // where the fan is, counted in pictures: 0 is the first, 1.5 is half way from the second to the third, -1 is the last
+    val pos = remember(post.id) { Animatable(0f) }
+    val base by remember(post.id) { derivedStateOf { pos.value.roundToInt() } }
     // the fan leans the same way in every language
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(
@@ -269,45 +292,58 @@ fun PostCarousel(net: Net, post: Post, modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
-            BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1.05f)) {
-                val cardW = maxWidth * 0.66f
-                val gap = maxWidth * 0.21f   // how far the middle of the next card is from the middle of the front one
-                HorizontalPager(
-                    state = pager,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = (maxWidth - cardW) / 2),
-                    pageSize = PageSize.Fixed(cardW),
-                    pageSpacing = gap - cardW,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { page ->
-                    val dist = abs(page - pager.currentPage)
-                    Box(
-                        Modifier
-                            .zIndex(10f - dist)
-                            .fillMaxWidth()
-                            .fillMaxHeight(0.92f)
-                            .graphicsLayer {
-                                // read while drawing: swiping never recomposes the card
-                                val t = (pager.currentPage - page) + pager.currentPageOffsetFraction
-                                val a = abs(t)
-                                rotationZ = -8f * t.coerceIn(-1f, 1f)
-                                val k = 1f - 0.12f * a.coerceAtMost(1f)
-                                scaleX = k
-                                scaleY = k
-                                alpha = (2f - a).coerceIn(0f, 1f)
+            BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(FAN_STACK_ASPECT)) {
+                val gapPx = with(LocalDensity.current) { maxWidth.toPx() } * 0.22f   // how far the next card is from the front one
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .draggable(
+                            orientation = Orientation.Horizontal,
+                            state = rememberDraggableState { dx -> scope.launch { pos.snapTo(pos.value - dx / gapPx) } },
+                            onDragStopped = { velocity ->
+                                scope.launch {
+                                    val here = pos.value.roundToInt()
+                                    val target = (pos.value - velocity / gapPx * 0.2f).roundToInt().coerceIn(here - 2, here + 2)
+                                    pos.animateTo(target.toFloat(), spring(dampingRatio = 0.8f, stiffness = 300f))
+                                }
+                            },
+                        ),
+                ) {
+                    for (r in -2..2) {
+                        val card = base + r
+                        key(card) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .zIndex(10f - abs(r))
+                                    .fillMaxWidth(FAN_FRONT)
+                                    .aspectRatio(FAN_CARD_ASPECT)
+                                    .graphicsLayer {
+                                        // read while drawing: swiping never recomposes the cards
+                                        val rel = card - pos.value
+                                        val a = abs(rel)
+                                        translationX = rel * gapPx
+                                        rotationZ = 8f * rel.coerceIn(-1f, 1f)
+                                        val k = 1f - 0.12f * a.coerceAtMost(1f)
+                                        scaleX = k
+                                        scaleY = k
+                                        alpha = (2f - a).coerceIn(0f, 1f)
+                                    }
+                                    .clip(MaterialTheme.shapes.small),
+                            ) {
+                                FanPicture(net, post.id, Math.floorMod(card, count), r == 0)
                             }
-                            .clip(MaterialTheme.shapes.small),
-                    ) {
-                        FanPicture(net, post.id, page, dist == 0)
+                        }
                     }
                 }
+                PicBadge("🖼️ " + count, Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
-            PageDots(count, pager.currentPage)
+            PageDots(count, Math.floorMod(base, count))
         }
     }
 }
 
-/** One card of the fan: the small picture at once, and the full one as soon as the card is the one in front. */
+/** One card of the fan: the small picture at once, and the full one as soon as the card is the one in the middle. */
 @Composable
 private fun FanPicture(net: Net, id: String, index: Int, front: Boolean) {
     var bmp by remember(id, index) { mutableStateOf<Bitmap?>(null) }
@@ -335,22 +371,22 @@ private fun FanPicture(net: Net, id: String, index: Int, front: Boolean) {
     }
 }
 
-/** One dot per picture; the one you are on stretches into a pill. Past 12 pictures it is just "3/14". */
+/** One round dot for each picture; the one you are on is bigger and rose. */
 @Composable
 private fun PageDots(count: Int, current: Int) {
-    if (count > 12) {
-        Text((current + 1).toString() + "/" + count, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.height(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         for (i in 0 until count) {
             val on = i == current
-            val w by animateDpAsState(if (on) 18.dp else 6.dp, label = "dot-width")
+            val size by animateDpAsState(if (on) 10.dp else 6.dp, label = "dot-size")
             val c by animateColorAsState(
-                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 label = "dot-colour",
             )
-            Box(Modifier.height(6.dp).width(w).clip(CircleShape).background(c))
+            Box(Modifier.size(size).clip(CircleShape).background(c))
         }
     }
 }
@@ -362,6 +398,39 @@ private fun aspectOf(p: Post): Float =
 object PostImagePrep {
     private const val MAX_SIDE = 1080
     private const val MAX_BYTES = 900_000
+
+    /**
+     * The part of [src] that fits a card of [FAN_CARD_ASPECT], as a JPEG. [biasX] and [biasY] (-1 to 1) say which part:
+     * 0 is the middle, -1 is the left or top edge, 1 the right or bottom edge.
+     */
+    fun cropToCard(src: Bitmap, biasX: Float, biasY: Float): ByteArray? {
+        try {
+            val w = src.width
+            val h = src.height
+            val cw: Int
+            val ch: Int
+            if (w.toFloat() / h.toFloat() > FAN_CARD_ASPECT) {
+                ch = h
+                cw = max(1, minOf(w, (h * FAN_CARD_ASPECT).toInt()))
+            } else {
+                cw = w
+                ch = max(1, minOf(h, (w / FAN_CARD_ASPECT).toInt()))
+            }
+            val x = ((w - cw) * (1f + biasX.coerceIn(-1f, 1f)) / 2f).toInt().coerceIn(0, max(0, w - cw))
+            val y = ((h - ch) * (1f + biasY.coerceIn(-1f, 1f)) / 2f).toInt().coerceIn(0, max(0, h - ch))
+            val part = Bitmap.createBitmap(src, x, y, cw, ch)
+            var quality = 85
+            while (true) {
+                val out = ByteArrayOutputStream()
+                part.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                val data = out.toByteArray()
+                if (data.size <= MAX_BYTES || quality <= 50) return data
+                quality -= 10
+            }
+        } catch (e: Throwable) {
+            return null
+        }
+    }
 
     fun prepare(c: Context, uri: Uri): ByteArray? {
         try {
@@ -769,7 +838,11 @@ fun ReportDialog(onSend: (String) -> Unit, onDismiss: () -> Unit) {
 
 private const val MAX_TRACK_IMAGES = 6
 
-private class Photo(val bytes: ByteArray, val preview: Bitmap)
+private class Photo(val bytes: ByteArray, val preview: Bitmap) {
+    /** Which part of the picture shows in its card when the track has several pictures: -1..1 across and down, 0 is the middle. */
+    var biasX by mutableStateOf(0f)
+    var biasY by mutableStateOf(0f)
+}
 
 /** A new track: up to six photos (the first one makes the track, the rest follow), and the caption. */
 @Composable
@@ -781,6 +854,7 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
     var caption by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var cropping by remember { mutableStateOf<Photo?>(null) }
 
     suspend fun addUris(uris: List<Uri>) {
         for (uri in uris) {
@@ -818,13 +892,29 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     photos.forEachIndexed { i, ph ->
-                        Box(Modifier.size(if (photos.size == 1) 240.dp else 120.dp).clip(MaterialTheme.shapes.medium)) {
+                        val several = photos.size > 1
+                        Box(
+                            Modifier
+                                .then(if (several) Modifier.width(120.dp).aspectRatio(FAN_CARD_ASPECT) else Modifier.size(240.dp))
+                                .clip(MaterialTheme.shapes.medium)
+                                .then(if (several) Modifier.clickable(enabled = !busy) { cropping = ph } else Modifier),
+                        ) {
                             Image(
                                 bitmap = ph.preview.asImageBitmap(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
+                                alignment = BiasAlignment(ph.biasX, ph.biasY),
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            if (several) {
+                                Surface(
+                                    color = Color.Black.copy(alpha = 0.55f),
+                                    shape = CircleShape,
+                                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                                ) {
+                                    Icon(Icons.Rounded.OpenWith, contentDescription = null, tint = Color.White, modifier = Modifier.padding(6.dp).size(16.dp))
+                                }
+                            }
                             Surface(
                                 color = Color.Black.copy(alpha = 0.55f),
                                 shape = CircleShape,
@@ -844,6 +934,7 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
                 Text(stringResource(if (photos.isEmpty()) R.string.post_pick else R.string.post_add_photo))
             }
             if (photos.isNotEmpty()) Muted(stringResource(R.string.post_photos_count, photos.size, MAX_TRACK_IMAGES))
+            if (photos.size > 1) Muted(stringResource(R.string.post_crop_hint))
             Field(
                 stringResource(R.string.post_caption_hint), caption, { caption = it.take(captionLimit) },
                 singleLine = false,
@@ -853,12 +944,20 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
             if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Button(
                 onClick = {
-                    val first = photos.firstOrNull()?.bytes
-                    val rest = photos.drop(1).map { it.bytes }
-                    if (first != null || caption.isNotBlank()) {
+                    if (photos.isNotEmpty() || caption.isNotBlank()) {
+                        val snapshot = photos.toList()
                         scope.launch {
                             busy = true
                             error = ""
+                            // with several pictures each one is cut to its card, the way you placed it
+                            val several = snapshot.size > 1
+                            val parts = withContext(Dispatchers.Default) {
+                                snapshot.map { ph ->
+                                    if (several) PostImagePrep.cropToCard(ph.preview, ph.biasX, ph.biasY) ?: ph.bytes else ph.bytes
+                                }
+                            }
+                            val first = parts.firstOrNull()
+                            val rest = parts.drop(1)
                             val body = JSONObject().put("caption", caption.trim())
                             if (first != null) body.put("image", Base64.encodeToString(first, Base64.NO_WRAP))
                             val r = net.post("/candy/post", body)
@@ -888,6 +987,53 @@ fun NewPostScreen(net: Net, initial: Uri?, onBack: () -> Unit, onPosted: () -> U
                 enabled = !busy && (photos.isNotEmpty() || caption.isNotBlank()),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.prof_post)) }
+        }
+    }
+    cropping?.let { ph -> CropDialog(ph) { cropping = null } }
+}
+
+/** One big card to drag a picture around in, to choose the part of it that shows in the track. */
+@Composable
+private fun CropDialog(photo: Photo, onDone: () -> Unit) {
+    Dialog(onDismissRequest = onDone) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Column(
+                Modifier.padding(Space.lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                Text(stringResource(R.string.post_crop_title), style = MaterialTheme.typography.titleMedium)
+                var frame by remember { mutableStateOf(IntSize.Zero) }
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.8f)
+                        .aspectRatio(FAN_CARD_ASPECT)
+                        .clip(MaterialTheme.shapes.medium)
+                        .onSizeChanged { frame = it }
+                        .pointerInput(photo) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                val w = photo.preview.width.toFloat()
+                                val h = photo.preview.height.toFloat()
+                                val k = maxOf(frame.width / w, frame.height / h)
+                                val overX = w * k - frame.width
+                                val overY = h * k - frame.height
+                                if (overX > 1f) photo.biasX = (photo.biasX - 2f * drag.x / overX).coerceIn(-1f, 1f)
+                                if (overY > 1f) photo.biasY = (photo.biasY - 2f * drag.y / overY).coerceIn(-1f, 1f)
+                            }
+                        },
+                ) {
+                    Image(
+                        bitmap = photo.preview.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alignment = BiasAlignment(photo.biasX, photo.biasY),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Muted(stringResource(R.string.post_crop_hint))
+                Button(onClick = onDone) { Text(stringResource(R.string.save)) }
+            }
         }
     }
 }

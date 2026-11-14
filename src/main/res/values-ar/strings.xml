@@ -385,4 +385,10 @@
     <string name="like_desc">إعجاب</string>
     <string name="comment_desc">التعليقات</string>
     <string name="share_desc">إرسال</string>
+    <string name="loop_cover">الغلاف</string>
+    <string name="loop_cover_title">اختار الغلاف</string>
+    <string name="loop_cover_gallery">من المعرض</string>
+    <string name="loop_cover_use">استخدم الغلاف ده</string>
+    <string name="post_crop_title">اختار الجزء اللي هيظهر</string>
+    <string name="post_crop_hint">اضغط على الصورة وحرّكها عشان تختار الجزء اللي هيظهر.</string>
 </resources>

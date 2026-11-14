@@ -385,4 +385,10 @@
     <string name="like_desc">Like</string>
     <string name="comment_desc">Comments</string>
     <string name="share_desc">Send</string>
+    <string name="loop_cover">Cover</string>
+    <string name="loop_cover_title">Choose the cover</string>
+    <string name="loop_cover_gallery">From gallery</string>
+    <string name="loop_cover_use">Use this cover</string>
+    <string name="post_crop_title">Choose the part that shows</string>
+    <string name="post_crop_hint">Tap a photo, then drag it to choose the part that shows.</string>
 </resources>

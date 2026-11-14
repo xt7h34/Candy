@@ -1,5 +1,15 @@
 package com.candy
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import android.graphics.Bitmap
@@ -20,6 +30,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -130,6 +142,133 @@ private fun videoCover(c: android.content.Context, uri: Uri): ByteArray? = try {
     null
 }
 
+/** How long the video is, in milliseconds (0 when it cannot be read). */
+private fun videoDurationMs(c: android.content.Context, uri: Uri): Long = try {
+    val mmr = MediaMetadataRetriever()
+    try {
+        mmr.setDataSource(c, uri)
+        mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+    } finally {
+        mmr.release()
+    }
+} catch (e: Throwable) {
+    0L
+}
+
+/** The frame of the video at [ms], at most 720 on its long side. */
+private fun videoFrameAt(c: android.content.Context, uri: Uri, ms: Long): Bitmap? = try {
+    val mmr = MediaMetadataRetriever()
+    try {
+        mmr.setDataSource(c, uri)
+        val frame = mmr.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+        if (frame == null) {
+            null
+        } else {
+            val longest = maxOf(frame.width, frame.height)
+            if (longest > 720) {
+                val k = 720f / longest
+                Bitmap.createScaledBitmap(frame, maxOf(1, (frame.width * k).toInt()), maxOf(1, (frame.height * k).toInt()), true)
+            } else {
+                frame
+            }
+        }
+    } finally {
+        mmr.release()
+    }
+} catch (e: Throwable) {
+    null
+}
+
+private fun coverJpeg(b: Bitmap): ByteArray {
+    val out = ByteArrayOutputStream()
+    b.compress(Bitmap.CompressFormat.JPEG, 80, out)
+    return out.toByteArray()
+}
+
+/**
+ * Choose the cover of a loop (the picture it has in the grid and under the video while it loads): slide along the video to
+ * a frame, or take a picture from the gallery. The first frame is used when you choose nothing.
+ */
+@Composable
+private fun CoverDialog(uri: Uri, current: Bitmap?, onUse: (ByteArray) -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var duration by remember { mutableStateOf(0L) }
+    var at by remember { mutableStateOf(0f) }
+    var frame by remember { mutableStateOf(current) }
+    var working by remember { mutableStateOf(false) }
+    LaunchedEffect(uri) { duration = withContext(Dispatchers.IO) { videoDurationMs(ctx, uri) } }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked ->
+        if (picked != null) {
+            scope.launch {
+                working = true
+                val bytes = withContext(Dispatchers.IO) { PostImagePrep.prepare(ctx, picked) }
+                if (bytes != null) frame = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                working = false
+            }
+        }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Column(
+                Modifier.padding(Space.lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                Text(stringResource(R.string.loop_cover_title), style = MaterialTheme.typography.titleMedium)
+                // the same shape as the loop has in the grid on a profile
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.5f)
+                        .aspectRatio(120f / 176f)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    val f = frame
+                    if (f != null) {
+                        Image(
+                            bitmap = f.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (working) LinearProgressIndicator(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+                }
+                Slider(
+                    value = at,
+                    onValueChange = { at = it },
+                    onValueChangeFinished = {
+                        scope.launch {
+                            working = true
+                            val b = withContext(Dispatchers.IO) { videoFrameAt(ctx, uri, (at * duration).toLong()) }
+                            if (b != null) frame = b
+                            working = false
+                        }
+                    },
+                    enabled = duration > 0L && !working,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    OutlinedButton(onClick = { pickImage.launch("image/*") }, enabled = !working) {
+                        Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(Space.sm))
+                        Text(stringResource(R.string.loop_cover_gallery))
+                    }
+                    Button(
+                        onClick = {
+                            val f = frame
+                            if (f != null) {
+                                scope.launch { onUse(withContext(Dispatchers.Default) { coverJpeg(f) }) }
+                            }
+                        },
+                        enabled = frame != null && !working,
+                    ) { Text(stringResource(R.string.loop_cover_use)) }
+                }
+            }
+        }
+    }
+}
+
 /**
  * Edit a photo or video before it is sent. [mode] is "stage", "loop" or "flare".
  * For a Stage or a Flare you can write text on it, move the text with your finger and choose its
@@ -152,6 +291,8 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
     var error by remember { mutableStateOf("") }
     var caption by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
+    var coverBytes by remember { mutableStateOf<ByteArray?>(null) }     // the cover of a loop: the first frame unless you choose another
+    var choosingCover by remember { mutableStateOf(false) }
     var friends by remember { mutableStateOf<List<CUser>>(emptyList()) }
     var friendsLoaded by remember { mutableStateOf(false) }
     val selected = remember { mutableStateListOf<String>() }
@@ -163,6 +304,10 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                 if (bytes == null) null else BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             }
         }
+    }
+
+    LaunchedEffect(picked.uri) {
+        if (loop && picked.isVideo) coverBytes = withContext(Dispatchers.IO) { videoCover(ctx, picked.uri) }
     }
 
     // a Flare goes to friends: people you follow who follow you back
@@ -213,7 +358,7 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                     error = ctx.getString(R.string.stage_video_big)
                     return@launch
                 }
-                val cover = withContext(Dispatchers.IO) { videoCover(ctx, picked.uri) }
+                val cover = coverBytes ?: withContext(Dispatchers.IO) { videoCover(ctx, picked.uri) }
                 // lighter copy first (null = it is already small, or it could not be done: then the original is sent as it is)
                 preparing = true
                 val small = VideoPrep.compress(ctx, picked.uri)
@@ -345,6 +490,28 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (error.isNotEmpty()) Text(error, color = Color(0xFFFFB4AB))
+            if (loop && picked.isVideo) {
+                val cb = coverBytes
+                val coverBmp = remember(cb) { cb?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(enabled = !busy) { choosingCover = true }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(Modifier.width(36.dp).aspectRatio(120f / 176f).clip(MaterialTheme.shapes.extraSmall).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        if (coverBmp != null) {
+                            Image(bitmap = coverBmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                    Text(stringResource(R.string.loop_cover), modifier = Modifier.weight(1f))
+                    Icon(Icons.Rounded.Image, contentDescription = null)
+                }
+            }
             if (loop) {
                 Box(
                     Modifier
@@ -380,6 +547,15 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                 Text(stringResource(if (loop) R.string.loop_share else if (flare) R.string.flare_send else R.string.stage_share))
             }
         }
+    }
+
+    if (choosingCover) {
+        CoverDialog(
+            uri = picked.uri,
+            current = remember(coverBytes) { coverBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } },
+            onUse = { coverBytes = it; choosingCover = false },
+            onDismiss = { choosingCover = false },
+        )
     }
 
     if (editing != -1) {
