@@ -403,4 +403,6 @@
     <string name="badge_get_plan">See plans</string>
     <string name="badge_more">More badges with a higher plan</string>
     <string name="err_retry">Try again</string>
+    <string name="auth_title_login">Welcome back</string>
+    <string name="auth_title_register">Create your account</string>
 </resources>

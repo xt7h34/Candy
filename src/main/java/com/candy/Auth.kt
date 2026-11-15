@@ -1,5 +1,19 @@
 package com.candy
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -95,41 +109,73 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Logo()
-        Text(
-            stringResource(R.string.app_name),
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary,
+    Box(Modifier.fillMaxSize()) {
+        // a soft rose glow at the top
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(360.dp)
+                .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), Color.Transparent))),
         )
+        BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = maxHeight)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            // the first screen sits in the middle; the forms start at the top
+            verticalArrangement = if (step == Step.Start) Arrangement.spacedBy(14.dp, Alignment.CenterVertically) else Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+        if (step == Step.Start) {
+            Logo()
+            Text(
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.displaySmall.copy(brush = CandyBrand.gradient()),
+            )
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                AppIconButton(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    stringResource(R.string.back),
+                    { error = ""; step = if (step == Step.Code) Step.Register else Step.Start },
+                )
+            }
+            Text(
+                stringResource(
+                    when (step) {
+                        Step.Login -> R.string.auth_title_login
+                        Step.Register -> R.string.auth_title_register
+                        else -> R.string.auth_code_title
+                    },
+                ),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         when (step) {
             Step.Start -> {
                 Text(
                     stringResource(R.string.auth_intro),
                     style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
+                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = { error = ""; step = Step.Login },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_have)) }
                 OutlinedButton(
                     onClick = { error = ""; step = Step.Register },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_new)) }
                 // a KanadeKey made on this phone: fingerprint instead of typing the password
                 val keyId = remember { KanadeKey.localId(ctx) }
                 if (keyId != null) {
-                    Button(
+                    FilledTonalButton(
                         onClick = {
                             scope.launch {
                                 busy = true
@@ -163,8 +209,13 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                             }
                         },
                         enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.key_signin)) }
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = CircleShape,
+                    ) {
+                        Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.key_signin))
+                    }
                 }
                 ErrorText(error)
                 Muted(stringResource(R.string.auth_from_kanade))
@@ -189,9 +240,8 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                         }
                     },
                     enabled = !busy && ident.isNotBlank() && pass.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_signin)) }
-                TextButton(onClick = { error = ""; step = Step.Start }) { Text(stringResource(R.string.back)) }
             }
 
             Step.Register -> {
@@ -254,13 +304,11 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                     },
                     enabled = !busy && name.isNotBlank() && birth.isNotBlank() && hash.isNotBlank() &&
                         phone.isNotBlank() && newPass.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_send_code)) }
-                TextButton(onClick = { error = ""; step = Step.Start }) { Text(stringResource(R.string.back)) }
             }
 
             Step.Code -> {
-                Text(stringResource(R.string.auth_code_title), style = MaterialTheme.typography.titleMedium)
                 Text(
                     stringResource(if (emailRequired) R.string.auth_code_hint_both else R.string.auth_code_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -284,10 +332,11 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                         }
                     },
                     enabled = !busy && code.length == 6 && (!emailRequired || emailCode.length == 6),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_confirm)) }
-                TextButton(onClick = { error = ""; step = Step.Register }) { Text(stringResource(R.string.back)) }
             }
+        }
+        }
         }
     }
 }

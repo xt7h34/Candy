@@ -1,5 +1,7 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
@@ -88,13 +90,19 @@ fun Field(
     singleLine: Boolean = true,
     modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
+    var shown by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = singleLine,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else keyboard),
+        visualTransformation = if (secret && !shown) PasswordVisualTransformation() else VisualTransformation.None,
+        trailingIcon = if (secret) {
+            { AppIconButton(if (shown) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, null, { shown = !shown }) }
+        } else {
+            null
+        },
         shape = MaterialTheme.shapes.medium,
         modifier = modifier,
     )

@@ -403,4 +403,6 @@
     <string name="badge_get_plan">شوف الباقات</string>
     <string name="badge_more">شارات أكتر مع باقة أعلى</string>
     <string name="err_retry">جرّب تاني</string>
+    <string name="auth_title_login">أهلاً بعودتك</string>
+    <string name="auth_title_register">أنشئ حسابك</string>
 </resources>
