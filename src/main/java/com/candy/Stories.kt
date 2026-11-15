@@ -1,5 +1,17 @@
 package com.candy
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.material3.Icon
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -109,8 +121,9 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
     var viewers by remember { mutableStateOf<List<Member>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
+    var retry by remember { mutableStateOf(0) }
 
-    LaunchedEffect(hash) {
+    LaunchedEffect(hash, retry) {
         val r = net.get("/candy/stories")
         if (r.ok) {
             val found = r.body?.optJSONArray("groups").toStoryGroups()
@@ -137,6 +150,7 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
 
     val g = group
     val item = g?.items?.getOrNull(index)
+    val progress = remember(item?.id) { Animatable(0f) }   // how much of this photo's few seconds has gone
 
     fun next() {
         if (g != null && index < g.items.lastIndex) index++ else onBack()
@@ -156,10 +170,12 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
         if (g != null && !g.mine) net.post("/candy/story/seen", JSONObject().put("id", current.id))
     }
 
-    // photos move on by themselves after a few seconds (videos move on when they end)
+    // photos move on by themselves after a few seconds, and wait while you hold the picture and carry on from where they stopped
+    // (videos move on when they end)
     LaunchedEffect(item?.id, bmp != null, paused) {
         if (item == null || item.kind == "video" || bmp == null || paused) return@LaunchedEffect
-        delay(STORY_MS)
+        val left = ((1f - progress.value) * STORY_MS).toInt().coerceAtLeast(1)
+        progress.animateTo(1f, tween(left, easing = LinearEasing))
         next()
     }
 
@@ -204,24 +220,39 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
             }
         }
         if (error.isNotEmpty()) {
-            Text(error, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+            Box(Modifier.align(Alignment.Center).padding(24.dp)) { ErrorText(error) { error = ""; retry++ } }
         }
 
         if (g != null) {
-            Row(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier.weight(1f).fillMaxHeight().clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { if (index > 0) index-- },
-                )
-                Box(
-                    Modifier.weight(1f).fillMaxHeight().clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { next() },
-                )
-            }
+            // a tap on the left third goes back, anywhere else goes on, and holding the picture pauses it
+            Box(
+                Modifier.fillMaxSize().pointerInput(g, index) {
+                    detectTapGestures(
+                        onPress = {
+                            paused = true
+                            tryAwaitRelease()
+                            paused = false
+                        },
+                        onTap = { pos -> if (pos.x < size.width * 0.35f) { if (index > 0) index-- } else next() },
+                    )
+                },
+            )
+
+            // soft dark edges so the white writing can always be read
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))),
+            )
 
             Column(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
@@ -234,26 +265,48 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
                                 .weight(1f)
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(2.dp))
-                                .background(if (i <= index) Color.White else Color(0x55FFFFFF)),
+                                .background(Color(0x55FFFFFF))
+                                .drawBehind {
+                                    // read while drawing, so the bar moves without the screen being redrawn
+                                    val done = if (i < index) 1f else if (i == index) (if (item?.kind == "video") 1f else progress.value) else 0f
+                                    drawRect(Color.White, size = Size(size.width * done, size.height))
+                                },
                         )
                     }
                 }
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Avatar(g.ownerHash, net.token, 32.dp)
-                    Box(Modifier.weight(1f)) {
+                    Avatar(g.ownerHash, net.token, 36.dp, 0, Modifier.border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape))
+                    Column(Modifier.weight(1f)) {
                         NameWithBadge(g.ownerName.ifBlank { g.ownerHash }, g.ownerVerified, MaterialTheme.typography.titleSmall, FontWeight.Bold, g.ownerBadge, Color.White)
+                        if (item != null) {
+                            Text(agoShort(ctx, item.at), color = Color(0xB3FFFFFF), style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                     AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
                 }
             }
 
+            if (item != null && item.caption.isNotBlank()) {
+                Text(
+                    item.caption,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = if (g.mine) 80.dp else 32.dp),
+                )
+            }
+
             if (g.mine && item != null) {
-                Row(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-                    TextButton(
+                Row(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Surface(
                         onClick = {
                             paused = true
                             scope.launch {
@@ -269,7 +322,18 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
                                 viewers = people
                             }
                         },
-                    ) { Text("👁 " + item.views, color = Color.White) }
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.45f),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(Icons.Rounded.Visibility, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Text(item.views.toString(), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                     AppIconButton(Icons.Rounded.Delete, null, { paused = true; confirmDelete = true }, tint = Color.White)
                 }
             }
