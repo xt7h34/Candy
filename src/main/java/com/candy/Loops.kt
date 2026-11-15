@@ -8,6 +8,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -200,7 +202,6 @@ private fun LoopPage(
     var burst by remember(loop.id) { mutableStateOf(0) }
     var expanded by remember(loop.id) { mutableStateOf(false) }
     val like = rememberLikeState(net, loop.id, loop.liked, loop.likes)
-    val inset = LocalBarInset.current
     val videoPath = "/candy/media?id=" + Uri.encode(loop.id) + "&video=1"
 
     LaunchedEffect(loop.id) { poster = MediaCache.load(net.token, loop.id, false) }
@@ -215,7 +216,7 @@ private fun LoopPage(
         if (active) net.post("/candy/loop/view", JSONObject().put("id", loop.id))
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         val cover = poster
         if (cover != null) {
             Image(
@@ -251,96 +252,72 @@ private fun LoopPage(
             },
         )
 
-        // a soft dark edge top and bottom so the white writing can always be read
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(300.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
-        )
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(130.dp)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
-        )
+        // Everything goes inside the picture itself, not on the screen: a wide video sits in the middle with black above and
+        // below it, and the buttons, name and caption belong on the video, not out in the black.
+        val ready = cover != null || firstFrame || failed
+        if (ready) {
+            val aspect = (cover?.let { it.width.toFloat() / it.height.toFloat() } ?: (9f / 16f)).coerceIn(0.3f, 3f)
+            val frameW = if (maxHeight * aspect < maxWidth) maxHeight * aspect else maxWidth
+            val frameH = frameW / aspect
+            val roomy = frameH >= 300.dp   // room for the buttons in a column at the side; a short video gets them in a row
 
-        HeartBurst(burst, Modifier.align(Alignment.Center))
-        AnimatedVisibility(
-            visible = !playing,
-            modifier = Modifier.align(Alignment.Center),
-            enter = fadeIn() + scaleIn(initialScale = 0.7f),
-            exit = fadeOut() + scaleOut(targetScale = 1.2f),
-        ) {
-            Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.45f)) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.padding(18.dp).size(44.dp))
-            }
-        }
-
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(0.74f)
-                .padding(start = Space.lg, end = Space.sm, bottom = Space.lg + inset),
-            verticalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            Row(
-                Modifier.clip(CircleShape).clickable { onOpenProfile(loop.ownerHash) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.sm),
-            ) {
-                Avatar(loop.ownerHash, net.token, 38.dp, 0, Modifier.border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape))
-                Text(
-                    loop.ownerName.ifBlank { loop.ownerHash },
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+            Box(Modifier.align(Alignment.Center).size(frameW, frameH)) {
+                // a soft dark edge so the white writing can always be read
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.55f)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
                 )
-                UserBadge(loop.ownerVerified, loop.ownerBadge, 14.sp)
-            }
-            if (loop.caption.isNotBlank()) {
-                // tap the writing to read all of it
-                Text(
-                    loop.caption,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = if (expanded) 12 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { expanded = !expanded },
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.25f)
+                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
                 )
-            }
-        }
 
-        Column(
-            Modifier.align(Alignment.BottomEnd).padding(end = Space.sm, bottom = Space.lg + inset),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            LikeButton(net, loop.id, loop.liked, loop.likes, idleTint = Color.White, vertical = true, state = like)
-            ActionPill(
-                androidx.compose.material.icons.Icons.Outlined.ChatBubbleOutline,
-                stringResource(R.string.comment_desc),
-                { onOpenComments(loop.id) },
-                label = loop.comments.toString(),
-                tint = Color.White,
-                vertical = true,
-            )
-            ActionPill(
-                androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Send,
-                stringResource(R.string.share_desc),
-                { sending = true },
-                tint = Color.White,
-                vertical = true,
-            )
-            SaveButton(net, loop.id, loop.saved, Color.White, vertical = true)
-            Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
+                HeartBurst(burst, Modifier.align(Alignment.Center))
+                AnimatedVisibility(
+                    visible = !playing,
+                    modifier = Modifier.align(Alignment.Center),
+                    enter = fadeIn() + scaleIn(initialScale = 0.7f),
+                    exit = fadeOut() + scaleOut(targetScale = 1.2f),
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.45f)) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.padding(18.dp).size(44.dp))
+                    }
+                }
+
+                if (roomy) {
+                    LoopInfo(
+                        net, loop, expanded, { expanded = !expanded }, onOpenProfile,
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth(0.72f).padding(start = Space.lg, end = Space.sm, bottom = Space.lg),
+                    )
+                    Column(
+                        Modifier.align(Alignment.BottomEnd).padding(end = Space.sm, bottom = Space.lg),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Space.sm),
+                    ) {
+                        LoopActions(net, loop, like, true, onOpenComments) { sending = true }
+                        Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
+                    }
+                } else {
+                    Column(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = Space.lg, end = Space.sm, bottom = Space.sm),
+                        verticalArrangement = Arrangement.spacedBy(Space.xs),
+                    ) {
+                        LoopInfo(net, loop, expanded, { expanded = !expanded }, onOpenProfile, Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                LoopActions(net, loop, like, false, onOpenComments) { sending = true }
+                            }
+                            Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
         }
 
         if (sending) SendLoopDialog(net, loop.id) { sending = false }
@@ -447,4 +424,71 @@ fun LoopsSection(net: Net, hash: String, refreshKey: Int, onOpen: (String) -> Un
             TextButton(onClick = { scope.launch { load(more) } }) { Text(stringResource(R.string.load_more)) }
         }
     }
+}
+
+/** Who posted the loop and what they wrote; tap the writing to read all of it. */
+@Composable
+private fun LoopInfo(
+    net: Net,
+    loop: Post,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Row(
+            Modifier.clip(CircleShape).clickable { onOpenProfile(loop.ownerHash) },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            Avatar(loop.ownerHash, net.token, 38.dp, 0, Modifier.border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape))
+            Box(Modifier.weight(1f, fill = false)) {
+                NameWithBadge(loop.ownerName.ifBlank { loop.ownerHash }, loop.ownerVerified, MaterialTheme.typography.titleSmall, FontWeight.Bold, loop.ownerBadge, Color.White)
+            }
+        }
+        if (loop.caption.isNotBlank()) {
+            Text(
+                loop.caption,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = if (expanded) 12 else 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggle,
+                ),
+            )
+        }
+    }
+}
+
+/** Like, comments, send and save, white on the video: tall (a column at the side) or flat (a row under the writing). */
+@Composable
+private fun LoopActions(
+    net: Net,
+    loop: Post,
+    like: LikeState,
+    vertical: Boolean,
+    onOpenComments: (String) -> Unit,
+    onShare: () -> Unit,
+) {
+    LikeButton(net, loop.id, loop.liked, loop.likes, idleTint = Color.White, vertical = vertical, state = like)
+    ActionPill(
+        androidx.compose.material.icons.Icons.Outlined.ChatBubbleOutline,
+        stringResource(R.string.comment_desc),
+        { onOpenComments(loop.id) },
+        label = loop.comments.toString(),
+        tint = Color.White,
+        vertical = vertical,
+    )
+    ActionPill(
+        androidx.compose.material.icons.Icons.AutoMirrored.Rounded.Send,
+        stringResource(R.string.share_desc),
+        onShare,
+        tint = Color.White,
+        vertical = vertical,
+    )
+    SaveButton(net, loop.id, loop.saved, Color.White, vertical = vertical)
 }

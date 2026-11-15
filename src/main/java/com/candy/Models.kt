@@ -320,6 +320,8 @@ class FlareItem(
     val fromHash: String,
     val kind: String,
     val overlays: List<Overlay>,
+    val fromVerified: Boolean = false,
+    val fromBadge: Badge? = null,
 )
 
 /** A friend you exchange Flares with: the streak, today's state, and how many are waiting for you. */
@@ -332,6 +334,8 @@ class FlareFriend(
     val atRisk: Boolean,
     val msLeft: Long,
     val unopened: Int,
+    val verified: Boolean = false,
+    val badge: Badge? = null,
 )
 
 fun JSONObject.toFlareItem(): FlareItem {
@@ -342,6 +346,8 @@ fun JSONObject.toFlareItem(): FlareItem {
         fromHash = from?.optString("hash").orEmpty(),
         kind = optString("kind", "photo"),
         overlays = optJSONArray("overlays").toOverlays(),
+        fromVerified = from?.optBoolean("verified") == true,
+        fromBadge = from?.optJSONObject("badge").toBadge(),
     )
 }
 
@@ -368,6 +374,8 @@ fun JSONArray?.toFlareFriends(): List<FlareFriend> {
                 atRisk = o.optBoolean("atRisk"),
                 msLeft = o.optLong("msLeft"),
                 unopened = o.optInt("unopened"),
+                verified = p?.optBoolean("verified") == true,
+                badge = p?.optJSONObject("badge").toBadge(),
             ),
         )
     }

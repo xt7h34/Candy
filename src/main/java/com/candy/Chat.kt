@@ -397,13 +397,7 @@ fun ChatsScreen(
                     ) {
                         Avatar(ff.hash, net.token, 44.dp)
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                ff.name.ifBlank { ff.hash },
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            NameWithBadge(ff.name.ifBlank { ff.hash }, ff.verified, MaterialTheme.typography.titleSmall, FontWeight.Bold, ff.badge)
                             Muted(
                                 if (ff.unopened > 0) {
                                     stringResource(R.string.flare_new, ff.unopened) + " · " + stringResource(R.string.flare_open)

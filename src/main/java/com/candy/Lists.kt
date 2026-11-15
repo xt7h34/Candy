@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -214,7 +215,7 @@ fun BubblesScreen(net: Net, onBack: () -> Unit) {
     }
 }
 
-private class Visit(val name: String, val hash: String, val at: Long)
+private class Visit(val name: String, val hash: String, val at: Long, val verified: Boolean = false, val badge: Badge? = null)
 
 /** Who looked at your profile recently. Candy Plus only: the bot says so if you are not a member. */
 @Composable
@@ -233,7 +234,7 @@ fun VisitsScreen(net: Net, onBack: () -> Unit, onOpen: (String) -> Unit) {
             if (arr != null) {
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
-                    out.add(Visit(o.optString("name"), o.optString("hash"), o.optLong("at")))
+                    out.add(Visit(o.optString("name"), o.optString("hash"), o.optLong("at"), o.optBoolean("verified"), o.optJSONObject("badge").toBadge()))
                 }
             }
             visits = out
@@ -263,7 +264,7 @@ fun VisitsScreen(net: Net, onBack: () -> Unit, onOpen: (String) -> Unit) {
                     ) {
                         if (v.hash.isNotEmpty()) Avatar(v.hash, net.token, 40.dp)
                         Column(Modifier.weight(1f)) {
-                            Text(v.name.ifBlank { v.hash })
+                            NameWithBadge(v.name.ifBlank { v.hash }, v.verified, MaterialTheme.typography.bodyLarge, FontWeight.Bold, v.badge)
                             Muted(v.hash)
                         }
                         Muted(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(v.at)))

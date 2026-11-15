@@ -171,14 +171,9 @@ fun FlareViewer(net: Net, hash: String, onBack: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Avatar(item.fromHash, net.token, 32.dp)
-                Text(
-                    item.fromName.ifBlank { item.fromHash },
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Box(Modifier.weight(1f)) {
+                    NameWithBadge(item.fromName.ifBlank { item.fromHash }, item.fromVerified, MaterialTheme.typography.titleSmall, FontWeight.Bold, item.fromBadge, Color.White)
+                }
                 Text("${index + 1}/${items.size}", color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelMedium)
                 TextButton(onClick = { finish() }) { Text("✕", color = Color.White) }
             }
