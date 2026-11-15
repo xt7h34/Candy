@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -1046,7 +1047,7 @@ fun PostsSection(net: Net, hash: String?, refreshKey: Int, onOpenPost: (String) 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionTitle(stringResource(R.string.prof_posts))
         ErrorText(error)
-        if (posts.isEmpty() && !loading && error.isEmpty()) Muted(stringResource(R.string.post_none))
+        if (posts.isEmpty() && !loading && error.isEmpty()) EmptyState(Icons.Rounded.PhotoLibrary, stringResource(R.string.post_none))
         for (row in posts.chunked(3)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (p in row) {

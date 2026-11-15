@@ -400,7 +400,7 @@ fun ProfileScreen(
     Column(Modifier.fillMaxSize().nestedScroll(header.connection).verticalScroll(scroll)) {
         ScreenHeader(hash, onBack)
         if (loading && user == null) Loading()
-        if (error.isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) }
+        if (error.isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(error) { reload++ } }
         val u = user
         if (u != null) {
             // a private account you do not follow, or someone you blocked: no tracks, loops, stages or drifts
@@ -637,7 +637,7 @@ fun MeScreen(
     Column(Modifier.fillMaxSize().nestedScroll(header.connection).verticalScroll(scroll)) {
         val data = me
         if (data == null) {
-            if (error.isEmpty()) Loading() else Column(Modifier.padding(16.dp)) { ErrorText(error) }
+            if (error.isEmpty()) Loading() else Column(Modifier.padding(16.dp)) { ErrorText(error) { reload++ } }
         } else {
             val u = data.toUser()
             val vibeMax = data.optInt("vibeMax", VIBE_LIMIT_FALLBACK)
@@ -662,7 +662,7 @@ fun MeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                ErrorText(error)
+                ErrorText(error) { reload++ }
                 ProfileInfo(u)
                 CountsRow(u, { onUsers("followers") }, { onUsers("following") })
                 FilledTonalButton(onClick = { editingVibe = true }, shape = CircleShape) {

@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -94,6 +95,7 @@ fun LoopsScreen(
     var next by remember { mutableStateOf<Long?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
+    var retry by remember { mutableStateOf(0) }
 
     suspend fun load(before: Long?) {
         loading = true
@@ -113,7 +115,7 @@ fun LoopsScreen(
         }
     }
 
-    LaunchedEffect(hash, refreshKey) { load(null) }
+    LaunchedEffect(hash, refreshKey, retry) { load(null) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (loops.isEmpty()) {
@@ -127,7 +129,7 @@ fun LoopsScreen(
                     if (error.isEmpty()) {
                         Text(stringResource(R.string.loops_empty), color = Color.White)
                     } else {
-                        ErrorText(error)
+                        ErrorText(error) { retry++ }
                     }
                 }
             }
@@ -298,7 +300,7 @@ private fun LoopPage(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                UserBadge(loop.ownerVerified, loop.ownerBadge, 16.dp)
+                UserBadge(loop.ownerVerified, loop.ownerBadge, 14.sp)
             }
             if (loop.caption.isNotBlank()) {
                 // tap the writing to read all of it
@@ -439,7 +441,7 @@ fun LoopsSection(net: Net, hash: String, refreshKey: Int, onOpen: (String) -> Un
                 for (i in row.size until 3) Spacer(Modifier.weight(1f))
             }
         }
-        if (loading) Loading()
+        if (loading) Spinner()
         val more = next
         if (more != null && !loading) {
             TextButton(onClick = { scope.launch { load(more) } }) { Text(stringResource(R.string.load_more)) }

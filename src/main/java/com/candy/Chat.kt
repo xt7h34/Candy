@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -137,6 +138,8 @@ private class ChatThread(
     val nick: String,
     val lastSeen: Boolean,
     val unread: Int,
+    val verified: Boolean = false,
+    val badge: Badge? = null,
 )
 
 private data class ChatMsg(
@@ -285,6 +288,8 @@ fun ChatsScreen(
                         nick = o.optString("nick"),
                         lastSeen = o.optJSONObject("last")?.optBoolean("seen") == true,
                         unread = o.optInt("unread"),
+                        verified = peer?.optBoolean("verified") == true,
+                        badge = peer?.optJSONObject("badge").toBadge(),
                     ),
                 )
             }
@@ -377,7 +382,7 @@ fun ChatsScreen(
                 }
             }
         }
-        item { ErrorText(error) }
+        item { ErrorText(error) { tick++ } }
 
         if (flareFriends.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.flares_title)) }
@@ -467,7 +472,7 @@ fun ChatsScreen(
         }
         if (loading) item { SkeletonCards(4, tall = false) }
         if (!loading && error.isEmpty() && threads.isEmpty()) {
-            item { Muted(stringResource(R.string.chats_empty), Modifier.padding(vertical = 16.dp)) }
+            item { EmptyState(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.chats_empty)) }
         }
         val seenInList = ChatPrefs.seenPlace(ctx) == "list"
         items(threads) { t ->
@@ -479,13 +484,7 @@ fun ChatsScreen(
                 ) {
                     Avatar(t.hash, net.token, 48.dp)
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            t.nick.ifBlank { t.name.ifBlank { t.hash } },
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        NameWithBadge(t.nick.ifBlank { t.name.ifBlank { t.hash } }, t.verified, MaterialTheme.typography.titleSmall, FontWeight.Bold, t.badge)
                         val previewIcon: ImageVector? = when {
                             t.lastDeleted -> Icons.Rounded.Block
                             t.lastKind == "sys" -> Icons.Rounded.Settings
@@ -574,6 +573,8 @@ fun ChatScreen(
     val messages = remember { mutableStateListOf<ChatMsg>() }
     var latest by remember { mutableStateOf(0) }
     var peerName by remember { mutableStateOf("") }
+    var peerVerified by remember { mutableStateOf(false) }
+    var peerBadge by remember { mutableStateOf<Badge?>(null) }
     var peerHash by remember { mutableStateOf(hash) }
     var canSend by remember { mutableStateOf(true) }
     var remaining by remember { mutableStateOf<Int?>(null) }
@@ -634,6 +635,8 @@ fun ChatScreen(
         var fresh = false
         val peer = body?.optJSONObject("peer")
         peerName = peer?.optString("name").orEmpty()
+        peerVerified = peer?.optBoolean("verified") == true
+        peerBadge = peer?.optJSONObject("badge").toBadge()
         peerHash = peer?.optString("hash").orEmpty().ifEmpty { hash }
         val arr = body?.optJSONArray("messages")
         if (arr != null) {
@@ -1238,7 +1241,7 @@ fun ChatScreen(
                 ) {
                     Avatar(peerHash, net.token, 36.dp)
                     Column {
-                        Text(shownName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        NameWithBadge(shownName, peerVerified, MaterialTheme.typography.titleMedium, null, peerBadge)
                         if (peerTyping && typingStyle == "text") {
                             Text(stringResource(R.string.chat_typing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }

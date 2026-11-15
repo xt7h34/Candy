@@ -402,4 +402,5 @@
     <string name="badge_none_desc">اشترك في باقة كندا وهتظهرلك شارة جنب اسمك.</string>
     <string name="badge_get_plan">شوف الباقات</string>
     <string name="badge_more">شارات أكتر مع باقة أعلى</string>
+    <string name="err_retry">جرّب تاني</string>
 </resources>

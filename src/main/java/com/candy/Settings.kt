@@ -480,7 +480,7 @@ fun SavedScreen(net: Net, onBack: () -> Unit, onOpenPost: (String) -> Unit, onOp
             ErrorText(error)
             if (loading) Loading()
             val shown = if (tab == 0) tracks else loops
-            if (!loading && shown.isEmpty() && error.isEmpty()) Muted(stringResource(R.string.saved_empty))
+            if (!loading && shown.isEmpty() && error.isEmpty()) EmptyState(Icons.Rounded.Bookmark, stringResource(R.string.saved_empty))
             if (shown.isNotEmpty()) {
                 SavedGrid(net, shown, loops = tab == 1) { id -> if (tab == 1) onOpenLoop(id) else onOpenPost(id) }
             }

@@ -88,7 +88,7 @@ fun BadgeScreen(net: Net, onBack: () -> Unit, onSubscriptions: () -> Unit) {
         ScreenHeader(stringResource(R.string.badge_title), onBack)
         val i = info
         if (i == null) {
-            if (error.isNotEmpty()) ErrorText(error) else Loading()
+            if (error.isNotEmpty()) ErrorText(error) { scope.launch { load() } } else Loading()
             return@Column
         }
 
@@ -106,7 +106,7 @@ fun BadgeScreen(net: Net, onBack: () -> Unit, onSubscriptions: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Space.lg),
         ) {
-            ErrorText(error)
+            ErrorText(error) { scope.launch { load() } }
 
             if (options.isEmpty()) {
                 // no plan and not verified: nothing to choose yet

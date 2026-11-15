@@ -1,5 +1,11 @@
 package com.candy
 
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -95,27 +101,41 @@ fun Field(
 }
 
 @Composable
-fun ErrorText(message: String) {
+fun ErrorText(message: String, onRetry: (() -> Unit)? = null) {
     if (message.isBlank()) return
     val ctx = LocalContext.current
-    // when the bot cannot be reached the app shows a picture instead of a sentence
+    // when the bot cannot be reached the app shows a picture instead of a sentence; tap it to try again
     if (message == ctx.getString(R.string.err_offline) || message == ctx.getString(R.string.err_generic)) {
-        OfflineArt(message)
+        OfflineArt(message, onRetry)
     } else {
         Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
-/** The picture of a bot that is switched off. [description] is read out by screen readers. */
+/** The picture of a bot that is switched off. [description] is read out by screen readers; [onRetry] makes it tappable. */
 @Composable
-fun OfflineArt(description: String, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(vertical = Space.md), contentAlignment = Alignment.Center) {
+fun OfflineArt(description: String, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    Column(
+        modifier.fillMaxWidth().padding(vertical = Space.md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Space.xs),
+    ) {
         Image(
             painterResource(R.drawable.bot_offline),
             contentDescription = description,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(180.dp).clip(MaterialTheme.shapes.large),
+            modifier = Modifier
+                .size(180.dp)
+                .clip(MaterialTheme.shapes.large)
+                .then(if (onRetry != null) Modifier.clickable(onClick = onRetry) else Modifier),
         )
+        if (onRetry != null) {
+            TextButton(onClick = onRetry) {
+                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(Space.sm))
+                Text(stringResource(R.string.err_retry))
+            }
+        }
     }
 }
 
@@ -139,10 +159,53 @@ fun SectionTitle(text: String) {
     )
 }
 
+/** A spinning circle, for the dark screens (a loop that is loading) where grey placeholders would not show. */
 @Composable
-fun Loading() {
+fun Spinner() {
     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+/** What a list that is still loading looks like: grey rows pulsing softly, so the screen does not jump when the real ones arrive. */
+@Composable
+fun Loading() {
+    val pulse = rememberInfiniteTransition(label = "loading")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "loading-alpha",
+    )
+    val tone = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)
+    Column(Modifier.fillMaxWidth().padding(vertical = Space.md), verticalArrangement = Arrangement.spacedBy(Space.lg)) {
+        repeat(4) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(tone))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.width(140.dp).height(12.dp).clip(MaterialTheme.shapes.extraSmall).background(tone))
+                    Box(Modifier.width(90.dp).height(10.dp).clip(MaterialTheme.shapes.extraSmall).background(tone))
+                }
+            }
+        }
+    }
+}
+
+/** A screen or list with nothing in it yet: a round icon and one short line. */
+@Composable
+fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = Space.xxl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Space.md),
+    ) {
+        Box(
+            Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(34.dp))
+        }
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
 
@@ -304,9 +367,24 @@ fun VerifiedBadge(size: Dp = 16.dp) {
 
 /** A name, with the blue check after it when the account is verified. */
 @Composable
-fun NameWithBadge(name: String, verified: Boolean, style: TextStyle, fontWeight: FontWeight? = null, badge: Badge? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(name, style = style, fontWeight = fontWeight)
-        UserBadge(verified, badge)
+fun NameWithBadge(
+    name: String,
+    verified: Boolean,
+    style: TextStyle,
+    fontWeight: FontWeight? = null,
+    badge: Badge? = null,
+    color: Color = Color.Unspecified,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            name,
+            style = style,
+            fontWeight = fontWeight,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        UserBadge(verified, badge, style.fontSize)
     }
 }

@@ -1,5 +1,9 @@
 package com.candy
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -162,7 +166,7 @@ fun MemoriesScreen(onBack: () -> Unit, onUse: (Picked, String) -> Unit) {
                             if (b != null) {
                                 Image(bitmap = b.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             }
-                            if (m.isVideo) Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp))
+                            if (m.isVideo) Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(24.dp))
                         }
                     }
                     for (i in row.size until 3) Spacer(Modifier.weight(1f))

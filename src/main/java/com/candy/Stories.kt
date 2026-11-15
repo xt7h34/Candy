@@ -244,14 +244,9 @@ fun StoryViewer(net: Net, hash: String, onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Avatar(g.ownerHash, net.token, 32.dp)
-                    Text(
-                        g.ownerName.ifBlank { g.ownerHash },
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Box(Modifier.weight(1f)) {
+                        NameWithBadge(g.ownerName.ifBlank { g.ownerHash }, g.ownerVerified, MaterialTheme.typography.titleSmall, FontWeight.Bold, g.ownerBadge, Color.White)
+                    }
                     AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
                 }
             }

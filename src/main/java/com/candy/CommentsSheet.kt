@@ -1,5 +1,17 @@
 package com.candy
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,20 +84,38 @@ fun CommentsSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
+        fun send() {
+            if (busy || text.isBlank()) return
+            scope.launch {
+                busy = true
+                val r = net.post("/candy/comment", JSONObject().put("id", postId).put("text", text.trim()))
+                busy = false
+                if (r.ok) {
+                    text = ""
+                    error = ""
+                    reload++
+                } else {
+                    error = r.message(ctx)
+                }
+            }
+        }
+
         Column(
             Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Space.lg),
         ) {
-            Text(
-                stringResource(R.string.post_comments_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            ErrorText(error)
+            Row(
+                Modifier.padding(bottom = Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                Text(stringResource(R.string.post_comments_title), style = MaterialTheme.typography.titleMedium)
+                if (comments.isNotEmpty()) Muted(comments.size.toString())
+            }
+            ErrorText(error) { reload++ }
             if (notice.isNotEmpty()) Muted(notice)
             Column(
                 Modifier
@@ -93,36 +123,43 @@ fun CommentsSheet(
                     .weight(1f, fill = false)
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(Space.md),
             ) {
                 if (loading) {
                     Loading()
-                } else if (comments.isEmpty()) {
-                    Muted(stringResource(R.string.post_no_comments))
+                } else if (comments.isEmpty() && error.isEmpty()) {
+                    EmptyState(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.post_no_comments))
                 }
                 for (c in comments) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Space.sm),
                     ) {
-                        Avatar(c.ownerHash, net.token, 32.dp, 0, Modifier.clickable { onOpenProfile(c.ownerHash) })
-                        Column(Modifier.weight(1f)) {
-                            NameWithBadge(
-                                c.ownerName.ifBlank { c.ownerHash },
-                                c.ownerVerified,
-                                MaterialTheme.typography.labelLarge,
-                                FontWeight.Bold,
-                                badge = c.ownerBadge,
-                            )
-                            Text(
-                                taggedText(c.text, MaterialTheme.colorScheme.primary),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                        Avatar(c.ownerHash, net.token, 36.dp, 0, Modifier.clickable { onOpenProfile(c.ownerHash) })
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                Column(Modifier.padding(horizontal = Space.md, vertical = Space.sm)) {
+                                    NameWithBadge(
+                                        c.ownerName.ifBlank { c.ownerHash },
+                                        c.ownerVerified,
+                                        MaterialTheme.typography.labelLarge,
+                                        FontWeight.Bold,
+                                        badge = c.ownerBadge,
+                                    )
+                                    Text(
+                                        taggedText(c.text, MaterialTheme.colorScheme.primary),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
+                            Muted(agoShort(ctx, c.at), Modifier.padding(start = Space.md))
                         }
-                        if (c.canDelete) {
-                            TextButton(
-                                onClick = {
+                        AppIconButton(
+                            if (c.canDelete) Icons.Rounded.Delete else Icons.Rounded.Flag,
+                            null,
+                            {
+                                if (c.canDelete) {
                                     scope.launch {
                                         val r = net.post(
                                             "/candy/comment/delete",
@@ -130,45 +167,44 @@ fun CommentsSheet(
                                         )
                                         if (r.ok) reload++ else error = r.message(ctx)
                                     }
-                                },
-                            ) { Text(stringResource(R.string.post_delete)) }
-                        } else {
-                            TextButton(onClick = { reporting = c.id }) { Text(stringResource(R.string.post_report)) }
-                        }
+                                } else {
+                                    reporting = c.id
+                                }
+                            },
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
+            // the box to write in, like the one in a chat: a round field and a round send button
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(vertical = Space.sm),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
             ) {
-                Field(
-                    stringResource(R.string.post_comment_hint),
-                    text,
-                    { text = it.take(COMMENT_MAX) },
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(COMMENT_MAX) },
+                    placeholder = { Text(stringResource(R.string.post_comment_hint)) },
+                    maxLines = 4,
+                    shape = MaterialTheme.shapes.extraLarge,
                     modifier = Modifier.weight(1f),
                 )
-                Button(
-                    onClick = {
-                        scope.launch {
-                            busy = true
-                            val r = net.post(
-                                "/candy/comment",
-                                JSONObject().put("id", postId).put("text", text.trim()),
-                            )
-                            busy = false
-                            if (r.ok) {
-                                text = ""
-                                error = ""
-                                reload++
-                            } else {
-                                error = r.message(ctx)
-                            }
-                        }
-                    },
-                    enabled = !busy && text.isNotBlank(),
-                ) { Text(stringResource(R.string.post_send)) }
+                val ready = !busy && text.isNotBlank()
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable(enabled = ready) { send() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.post_send),
+                        tint = if (ready) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

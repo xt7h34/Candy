@@ -229,6 +229,8 @@ class StoryGroup(
     val mine: Boolean,
     val allSeen: Boolean,
     val items: List<StoryItem>,
+    val ownerVerified: Boolean = false,
+    val ownerBadge: Badge? = null,
 )
 
 fun JSONArray?.toStoryGroups(): List<StoryGroup> {
@@ -264,6 +266,8 @@ fun JSONArray?.toStoryGroups(): List<StoryGroup> {
                 mine = o.optBoolean("mine"),
                 allSeen = o.optBoolean("allSeen"),
                 items = items,
+                ownerVerified = owner?.optBoolean("verified") == true,
+                ownerBadge = owner?.optJSONObject("badge").toBadge(),
             ),
         )
     }

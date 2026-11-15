@@ -1,5 +1,8 @@
 package com.candy
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Visibility
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -81,7 +84,7 @@ fun UsersScreen(net: Net, kind: String, onBack: () -> Unit, onOpen: (String) -> 
             item { ErrorText(error) }
             if (loading && users.isEmpty()) item { Loading() }
             if (!loading && error.isEmpty() && users.isEmpty()) {
-                item { Muted(stringResource(R.string.users_empty), Modifier.padding(vertical = 16.dp)) }
+                item { EmptyState(Icons.Rounded.People, stringResource(R.string.users_empty)) }
             }
             items(users) { UserRow(it, net.token, onOpen) }
         }
@@ -249,7 +252,7 @@ fun VisitsScreen(net: Net, onBack: () -> Unit, onOpen: (String) -> Unit) {
             item { ErrorText(error) }
             if (loading) item { Loading() }
             if (!loading && error.isEmpty() && visits.isEmpty()) {
-                item { Muted(stringResource(R.string.visits_empty), Modifier.padding(vertical = 16.dp)) }
+                item { EmptyState(Icons.Rounded.Visibility, stringResource(R.string.visits_empty)) }
             }
             items(visits) { v ->
                 CandyCard(Modifier.fillMaxWidth().clickable(enabled = v.hash.isNotEmpty()) { onOpen(v.hash) }) {

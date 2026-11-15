@@ -1,5 +1,6 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -243,7 +244,7 @@ fun FeedScreen(
                 }
             }
             if (stories.isNotEmpty()) item { StoriesRow(net.token, stories, onOpenStory) }
-            item { ErrorText(error) }
+            item { ErrorText(error) { reload++ } }
             if (drifts.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.feed_title)) }
                 item {
@@ -261,7 +262,7 @@ fun FeedScreen(
             }
             if (loading && posts.isEmpty() && drifts.isEmpty()) item { SkeletonCards(3) }
             if (!loading && error.isEmpty() && posts.isEmpty() && drifts.isEmpty()) {
-                item { Muted(stringResource(R.string.feed_empty), Modifier.padding(vertical = 16.dp)) }
+                item { EmptyState(Icons.Rounded.PhotoLibrary, stringResource(R.string.feed_empty)) }
             }
             item { Column(Modifier.padding(bottom = 16.dp)) {} }
         }

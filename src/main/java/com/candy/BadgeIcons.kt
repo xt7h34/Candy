@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.coerceIn
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -52,11 +57,18 @@ val BadgeIconNames = listOf(
     "gem", "hat", "horn", "medal", "sport", "trophy", "gold",
 )
 
-/** The badge of an account: the one it chose, or the blue check when it is just verified. Nothing when it has neither. */
+/**
+ * The badge of an account: the one it chose, or the blue check when it is just verified. Nothing when it has neither.
+ * Its size follows the size of the name it stands next to ([textSize]): the check a little taller than the letters, the
+ * drawn badges bigger still (and never under 20dp) because they have more to show.
+ */
 @Composable
-fun UserBadge(verified: Boolean, badge: Badge?, size: Dp = 16.dp, modifier: Modifier = Modifier) {
+fun UserBadge(verified: Boolean, badge: Badge?, textSize: TextUnit = 14.sp, modifier: Modifier = Modifier) {
     val icon = badge?.icon ?: if (verified) "check" else null
-    if (icon != null) BadgeIcon(icon, size, badge?.color?.let { Color(it) }, modifier)
+    if (icon == null) return
+    val nameDp = with(LocalDensity.current) { (if (textSize.isSpecified) textSize else 14.sp).toDp() }
+    val size = if (icon == "check") (nameDp * 1.25f).coerceIn(15.dp, 30.dp) else (nameDp * 1.5f).coerceIn(20.dp, 34.dp)
+    BadgeIcon(icon, size, badge?.color?.let { Color(it) }, modifier)
 }
 
 /** One badge, drawn. It is the same on every phone because it is not an emoji, it is a picture made of shapes. */
@@ -96,7 +108,7 @@ private fun DrawScope.drawBadgeIcon(icon: String, custom: Color?) {
             val steps = 160
             for (i in 0..steps) {
                 val a = 2.0 * PI * i / steps
-                val r = p(0.40f) * (1f + 0.085f * cos(8.0 * a).toFloat())
+                val r = p(0.455f) * (1f + 0.06f * cos(8.0 * a).toFloat())
                 val x = p(0.5f) + r * cos(a).toFloat()
                 val y = p(0.5f) + r * sin(a).toFloat()
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -104,11 +116,11 @@ private fun DrawScope.drawBadgeIcon(icon: String, custom: Color?) {
             path.close()
             drawPath(path, base)
             val tick = Path().apply {
-                moveTo(p(0.29f), p(0.52f))
-                lineTo(p(0.44f), p(0.67f))
-                lineTo(p(0.71f), p(0.37f))
+                moveTo(p(0.265f), p(0.525f))
+                lineTo(p(0.43f), p(0.69f))
+                lineTo(p(0.735f), p(0.35f))
             }
-            drawPath(tick, Color.White, style = round(0.105f))
+            drawPath(tick, Color.White, style = round(0.115f))
         }
 
         // a rounded gold star with two sparkles

@@ -55,13 +55,17 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var suggested by remember { mutableStateOf(false) }
+    var retryKey by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryKey) {
         val r = net.get("/candy/suggestions")
         suggested = true
         if (r.ok) {
             newAccounts = r.body?.optJSONArray("newAccounts").toUsers()
             popular = r.body?.optJSONArray("popular").toUsers()
+            error = ""
+        } else {
+            error = r.message(ctx)
         }
     }
 
@@ -109,7 +113,7 @@ fun SearchScreen(net: Net, onOpen: (String) -> Unit) {
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.lg))
             }
         }
-        item { ErrorText(error) }
+        item { ErrorText(error) { retryKey++; if (query.isNotBlank()) search() } }
         val found = results
         if (found != null) {
             if (found.isEmpty()) {
@@ -152,13 +156,7 @@ fun UserRow(u: CUser, token: String, onOpen: (String) -> Unit) {
         ) {
             Avatar(u.hash, token, 48.dp)
             Column(Modifier.weight(1f)) {
-                Text(
-                    u.name.ifBlank { u.hash },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                NameWithBadge(u.name.ifBlank { u.hash }, u.verified, MaterialTheme.typography.titleSmall, FontWeight.Bold, u.badge)
                 Muted(u.hash)
                 val vibe = u.vibe
                 if (vibe != null) {

@@ -132,15 +132,18 @@ private val InterFamily = FontFamily(
     Font(R.font.inter_bold, FontWeight.Bold),
 )
 
+/** Amman Bold for the headings and names, in Arabic and Latin. (It only comes in bold; the body text stays Inter.) */
+private val AmmanFamily = FontFamily(Font(R.font.amman_bold, FontWeight.Bold))
+
 // No letterSpacing anywhere: it breaks the joined letters of Arabic.
 private val CandyTypography = Typography(
-    displaySmall = TextStyle(fontFamily = InterFamily, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
-    headlineLarge = TextStyle(fontFamily = InterFamily, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontFamily = InterFamily, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
-    headlineSmall = TextStyle(fontFamily = InterFamily, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontFamily = InterFamily, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    displaySmall = TextStyle(fontFamily = AmmanFamily, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
+    headlineLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
     bodyLarge = TextStyle(fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
     bodyMedium = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
     bodySmall = TextStyle(fontFamily = InterFamily, fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
