@@ -124,16 +124,14 @@ object CandyBrand {
     fun hairline(): Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
 }
 
-/** Inter for Latin letters. It has no Arabic, so Arabic text uses the phone's own Arabic font, as before. */
-private val InterFamily = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_bold, FontWeight.Bold),
+/**
+ * Amman, the font of the whole app, in Arabic and Latin. It comes in two weights: Light for the text you read, and Bold for
+ * headings, names, buttons and labels. Anything asked for in between uses the nearest of the two.
+ */
+private val AmmanFamily = FontFamily(
+    Font(R.font.amman_light, FontWeight.Light),
+    Font(R.font.amman_bold, FontWeight.Bold),
 )
-
-/** Amman Bold for the headings and names, in Arabic and Latin. (It only comes in bold; the body text stays Inter.) */
-private val AmmanFamily = FontFamily(Font(R.font.amman_bold, FontWeight.Bold))
 
 // No letterSpacing anywhere: it breaks the joined letters of Arabic.
 private val CandyTypography = Typography(
@@ -141,15 +139,15 @@ private val CandyTypography = Typography(
     headlineLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
     headlineMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
     headlineSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
-    bodyMedium = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
-    bodySmall = TextStyle(fontFamily = InterFamily, fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
-    labelLarge = TextStyle(fontFamily = InterFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
-    labelMedium = TextStyle(fontFamily = InterFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
-    labelSmall = TextStyle(fontFamily = InterFamily, fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    titleLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+    titleMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold),
+    titleSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold),
+    bodyLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Light),
+    bodyMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Light),
+    bodySmall = TextStyle(fontFamily = AmmanFamily, fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Light),
+    labelLarge = TextStyle(fontFamily = AmmanFamily, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold),
+    labelMedium = TextStyle(fontFamily = AmmanFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold),
+    labelSmall = TextStyle(fontFamily = AmmanFamily, fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold),
 )
 
 @Composable
