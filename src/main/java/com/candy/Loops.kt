@@ -216,13 +216,15 @@ private fun LoopPage(
         if (active) net.post("/candy/loop/view", JSONObject().put("id", loop.id))
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         val cover = poster
+        // like Reels: a video made for a phone (tall) fills the whole screen; a wide one stays whole in the middle
+        val fill = cover == null || cover.width.toFloat() / cover.height.toFloat() < 0.8f
         if (cover != null) {
             Image(
                 bitmap = cover.asImageBitmap(),
                 contentDescription = null,
-                contentScale = ContentScale.Fit,
+                contentScale = if (fill) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -235,6 +237,7 @@ private fun LoopPage(
                 loop = true,
                 onFailed = { failed = true },
                 onFirstFrame = { firstFrame = true },
+                fill = fill,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -252,72 +255,45 @@ private fun LoopPage(
             },
         )
 
-        // Everything goes inside the picture itself, not on the screen: a wide video sits in the middle with black above and
-        // below it, and the buttons, name and caption belong on the video, not out in the black.
-        val ready = cover != null || firstFrame || failed
-        if (ready) {
-            val aspect = (cover?.let { it.width.toFloat() / it.height.toFloat() } ?: (9f / 16f)).coerceIn(0.3f, 3f)
-            val frameW = if (maxHeight * aspect < maxWidth) maxHeight * aspect else maxWidth
-            val frameH = frameW / aspect
-            val roomy = frameH >= 300.dp   // room for the buttons in a column at the side; a short video gets them in a row
+        // the writing and the buttons stay on the edges of the screen, whatever shape the video is, like Reels
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(300.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
+        )
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(130.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
+        )
 
-            Box(Modifier.align(Alignment.Center).size(frameW, frameH)) {
-                // a soft dark edge so the white writing can always be read
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.55f)
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
-                )
-                Box(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.25f)
-                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
-                )
-
-                HeartBurst(burst, Modifier.align(Alignment.Center))
-                AnimatedVisibility(
-                    visible = !playing,
-                    modifier = Modifier.align(Alignment.Center),
-                    enter = fadeIn() + scaleIn(initialScale = 0.7f),
-                    exit = fadeOut() + scaleOut(targetScale = 1.2f),
-                ) {
-                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.45f)) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.padding(18.dp).size(44.dp))
-                    }
-                }
-
-                if (roomy) {
-                    LoopInfo(
-                        net, loop, expanded, { expanded = !expanded }, onOpenProfile,
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth(0.72f).padding(start = Space.lg, end = Space.sm, bottom = Space.lg),
-                    )
-                    Column(
-                        Modifier.align(Alignment.BottomEnd).padding(end = Space.sm, bottom = Space.lg),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(Space.sm),
-                    ) {
-                        LoopActions(net, loop, like, true, onOpenComments) { sending = true }
-                        Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
-                    }
-                } else {
-                    Column(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = Space.lg, end = Space.sm, bottom = Space.sm),
-                        verticalArrangement = Arrangement.spacedBy(Space.xs),
-                    ) {
-                        LoopInfo(net, loop, expanded, { expanded = !expanded }, onOpenProfile, Modifier.fillMaxWidth())
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                LoopActions(net, loop, like, false, onOpenComments) { sending = true }
-                            }
-                            Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
+        HeartBurst(burst, Modifier.align(Alignment.Center))
+        AnimatedVisibility(
+            visible = !playing,
+            modifier = Modifier.align(Alignment.Center),
+            enter = fadeIn() + scaleIn(initialScale = 0.7f),
+            exit = fadeOut() + scaleOut(targetScale = 1.2f),
+        ) {
+            Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.45f)) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.padding(18.dp).size(44.dp))
             }
+        }
+
+        LoopInfo(
+            net, loop, expanded, { expanded = !expanded }, onOpenProfile,
+            Modifier.align(Alignment.BottomStart).fillMaxWidth(0.74f).padding(start = Space.lg, end = Space.sm, bottom = Space.lg),
+        )
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(end = Space.sm, bottom = Space.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            LoopActions(net, loop, like, true, onOpenComments) { sending = true }
+            Text(stringResource(R.string.loop_views, loop.views), color = Color(0xCCFFFFFF), style = MaterialTheme.typography.labelSmall)
         }
 
         if (sending) SendLoopDialog(net, loop.id) { sending = false }

@@ -123,6 +123,7 @@ fun CandyVideo(
     onEnded: () -> Unit = {},
     onFailed: () -> Unit = {},
     onFirstFrame: () -> Unit = {},
+    fill: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val owner = ctx as LifecycleOwner
@@ -178,7 +179,11 @@ fun CandyVideo(
                 this.player = exo
             }
         },
-        update = { v -> if (v.player !== exo) v.player = exo },
+        update = { v ->
+            if (v.player !== exo) v.player = exo
+            // fill the space (cutting what does not fit) or fit the whole picture in it
+            v.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        },
         modifier = modifier,
     )
 }
