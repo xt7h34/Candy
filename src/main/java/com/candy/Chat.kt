@@ -1,5 +1,10 @@
 package com.candy
 
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.vector.ImageVector
 import android.text.format.DateUtils
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -1240,7 +1245,7 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Avatar(peerHash, net.token, 36.dp)
+                    Avatar(peerHash, net.token, 40.dp)
                     Column {
                         NameWithBadge(shownName, peerVerified, MaterialTheme.typography.titleMedium, null, peerBadge)
                         if (peerTyping && typingStyle == "text") {
@@ -1253,6 +1258,7 @@ fun ChatScreen(
                 }
                 AppIconButton(Icons.Rounded.Search, null, { searching = true })
             }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(CandyBrand.hairline()))
         }
 
         // the other person asked for silent deleting
@@ -1632,28 +1638,21 @@ fun ChatScreen(
                 if (left != null) Muted(stringResource(R.string.chat_remaining, left))
                 val ed = editing
                 if (ed != null) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Muted("✏️ " + stringResource(R.string.msg_editing) + ": " + ed.text.take(40), Modifier.weight(1f))
-                        AppIconButton(Icons.Rounded.Close, null, { editing = null; input = "" })
-                    }
+                    ComposerNote(Icons.Rounded.Edit, stringResource(R.string.msg_editing), ed.text.take(80)) { editing = null; input = "" }
                 }
                 if (quoted != null) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Muted(
-                            stringResource(R.string.chat_replying, if (quoted.mine) stringResource(R.string.nav_me) else shownName) + ": " +
-                                (if (quoted.stickerId != null) "😊" else if (quoted.loopId != null) "🎬" else if (quoted.hasImage) "📷 " + quoted.text.take(30) else quoted.text.take(40)),
-                            Modifier.weight(1f),
-                        )
-                        AppIconButton(Icons.Rounded.Close, null, { replyTo = null })
+                    val quotedText = when {
+                        quoted.stickerId != null -> stringResource(R.string.chat_kind_sticker)
+                        quoted.loopId != null -> stringResource(R.string.chat_kind_loop)
+                        quoted.voiceMs != null -> stringResource(R.string.chat_kind_voice)
+                        quoted.hasImage && quoted.text.isEmpty() -> stringResource(R.string.chat_kind_image)
+                        else -> quoted.text.take(80)
                     }
+                    ComposerNote(
+                        Icons.AutoMirrored.Rounded.Reply,
+                        stringResource(R.string.chat_replying, if (quoted.mine) stringResource(R.string.nav_me) else shownName),
+                        quotedText,
+                    ) { replyTo = null }
                 }
                 if (recording) {
                     if (limitReached) Muted(stringResource(R.string.voice_limit))
@@ -2093,6 +2092,24 @@ private fun DayChip(at: Long) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+/** What you are editing or replying to, above the box you write in: a rose line on the side, a title, the words, and a close. */
+@Composable
+private fun ComposerNote(icon: ImageVector, title: String, text: String, onClose: () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(4.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 10.dp).size(18.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 6.dp)) {
+                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (text.isNotBlank()) {
+                    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            AppIconButton(Icons.Rounded.Close, null, onClose)
         }
     }
 }
