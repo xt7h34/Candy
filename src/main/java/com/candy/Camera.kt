@@ -1,5 +1,14 @@
 package com.candy
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FlipCameraAndroid
@@ -205,41 +214,90 @@ fun CameraScreen(
         if (hasCamera) {
             AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
         } else {
+            // no permission yet: say why we need it, and ask
             Column(
-                Modifier.align(Alignment.Center).padding(24.dp),
+                Modifier.align(Alignment.Center).padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(stringResource(R.string.cam_permission), color = Color.White)
-                Button(onClick = {
-                    permissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-                }) { Text(stringResource(R.string.cam_allow)) }
+                Box(
+                    Modifier.size(88.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+                }
+                Text(
+                    stringResource(R.string.cam_permission),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                )
+                Button(
+                    onClick = { permissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) },
+                    shape = CircleShape,
+                    modifier = Modifier.height(48.dp),
+                ) { Text(stringResource(R.string.cam_allow)) }
             }
         }
 
+        // soft dark edges so the white buttons can always be seen
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(140.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent))),
+        )
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(280.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))),
+        )
+
         Row(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().systemBarsPadding().padding(8.dp),
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().systemBarsPadding().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
-            TextButton(onClick = onMemories) {
-                Text("🗂️ " + stringResource(R.string.cam_memories), color = Color.White)
+            Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) {
+                AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White)
             }
-            AppIconButton(
-                Icons.Rounded.FlipCameraAndroid,
-                null,
-                { lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK },
-                tint = Color.White,
-            )
+            Surface(onClick = onMemories, shape = CircleShape, color = Color.Black.copy(alpha = 0.35f)) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Text(stringResource(R.string.cam_memories), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) {
+                AppIconButton(
+                    Icons.Rounded.FlipCameraAndroid,
+                    null,
+                    { lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK },
+                    tint = Color.White,
+                )
+            }
         }
 
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().systemBarsPadding().padding(bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (message.isNotEmpty()) {
-                Text(message, color = Color.White, modifier = Modifier.padding(horizontal = 24.dp))
+                Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) {
+                    Text(
+                        message,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
             } else {
                 Text(
                     stringResource(R.string.cam_hint),
@@ -255,48 +313,68 @@ fun CameraScreen(
                         Box(
                             Modifier
                                 .size(52.dp)
-                                .border(2.dp, Color.White, RoundedCornerShape(10.dp))
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.White.copy(alpha = 0.16f))
+                                .border(1.5.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
                                 .clickable { gallery.launch(arrayOf("image/*", "video/*")) },
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Rounded.Image, contentDescription = null, tint = Color.White) }
                     }
                 }
+
+                // the shutter: a ring with a button in it that shrinks a little when pressed, and turns into a red square while it records
+                var pressed by remember { mutableStateOf(false) }
+                val press by animateFloatAsState(if (pressed) 0.9f else 1f, label = "shutter-press")
+                val inner by animateDpAsState(if (recording != null) 34.dp else 66.dp, label = "shutter-size")
+                val corner by animateDpAsState(if (recording != null) 10.dp else 33.dp, label = "shutter-corner")
+                val ringColor = if (recording != null) Color(0xFFFF4D4D) else Color.White
                 Box(
                     Modifier
                         .size(84.dp)
-                        .border(4.dp, Color.White, CircleShape)
-                        .padding(8.dp)
-                        .clip(CircleShape)
-                        .background(if (recording != null) Color.Red else Color.White)
+                        .graphicsLayer { scaleX = press; scaleY = press }
+                        .border(4.dp, ringColor, CircleShape)
                         .pointerInput(dest, hasCamera) {
                             detectTapGestures(
                                 onPress = {
+                                    pressed = true
                                     tryAwaitRelease()
+                                    pressed = false
                                     recording?.stop()
                                 },
                                 onTap = { if (dest == DEST_LOOP) message = ctx.getString(R.string.cam_loop_video) else takePhoto() },
                                 onLongPress = { if (dest != DEST_TRACK) startVideo() },
                             )
                         },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(inner).clip(RoundedCornerShape(corner)).background(ringColor))
+                }
                 Box(Modifier.weight(1f))
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val choices = if (flareLocked) {
-                    listOf(DEST_FLARE to R.string.cam_flare)
-                } else {
-                    listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage, DEST_LOOP to R.string.cam_loop, DEST_FLARE to R.string.cam_flare)
-                }
+            // where it goes: Track, Story, Loop or Flare, in one pill with the chosen one lit
+            val choices = if (flareLocked) {
+                listOf(DEST_FLARE to R.string.cam_flare)
+            } else {
+                listOf(DEST_TRACK to R.string.cam_track, DEST_STAGE to R.string.cam_stage, DEST_LOOP to R.string.cam_loop, DEST_FLARE to R.string.cam_flare)
+            }
+            Row(
+                Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 for ((id, label) in choices) {
                     val selected = dest == id
-                    TextButton(onClick = { dest = id }) {
+                    Box(
+                        Modifier
+                            .clip(CircleShape)
+                            .then(if (selected) Modifier.background(CandyBrand.gradient()) else Modifier)
+                            .clickable { dest = id }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    ) {
                         Text(
                             stringResource(label),
-                            color = if (selected) Color.White else Color(0x99FFFFFF),
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            style = MaterialTheme.typography.titleMedium,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else Color(0xB3FFFFFF),
+                            style = MaterialTheme.typography.labelLarge,
                         )
                     }
                 }

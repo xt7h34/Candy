@@ -1,5 +1,11 @@
 package com.candy
 
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.height
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.aspectRatio
@@ -452,23 +458,47 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
             }
         }
 
+        // soft dark edges so the white buttons and writing can always be seen
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(130.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent))),
+        )
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(260.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))),
+        )
+
         Row(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onBack, enabled = !busy) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleLarge) }
-            Row {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            saved = withContext(Dispatchers.IO) { MemoriesStore.add(ctx, picked) }
-                        }
-                    },
-                    enabled = !busy && !saved,
-                ) { Text(if (saved) "✅" else "💾", style = MaterialTheme.typography.titleLarge) }
+            Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) {
+                AppIconButton(Icons.Rounded.Close, null, onBack, tint = Color.White, enabled = !busy)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) {
+                    AppIconButton(
+                        if (saved) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
+                        null,
+                        {
+                            scope.launch {
+                                saved = withContext(Dispatchers.IO) { MemoriesStore.add(ctx, picked) }
+                            }
+                        },
+                        tint = Color.White,
+                        enabled = !busy && !saved,
+                    )
+                }
                 if (!loop) {
-                    TextButton(onClick = { editing = -2 }, enabled = !busy && overlays.size < 8) {
-                        Text("Aa", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) {
+                        AppIconButton(Icons.Rounded.TextFields, null, { editing = -2 }, tint = Color.White, enabled = !busy && overlays.size < 8)
                     }
                 }
             }
@@ -488,7 +518,7 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
             } else if (busy) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            if (error.isNotEmpty()) Text(error, color = Color(0xFFFFB4AB))
+            ErrorText(error)
             if (loop && picked.isVideo) {
                 val cb = coverBytes
                 val coverBmp = remember(cb) { cb?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
@@ -542,7 +572,7 @@ fun StageEditorScreen(net: Net, picked: Picked, mode: String, presetTo: String?,
                     }
                 }
             }
-            Button(onClick = { share() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { share() }, enabled = !busy, shape = CircleShape, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                 Text(stringResource(if (loop) R.string.loop_share else if (flare) R.string.flare_send else R.string.stage_share))
             }
         }
