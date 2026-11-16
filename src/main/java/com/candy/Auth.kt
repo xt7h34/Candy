@@ -173,7 +173,8 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                     modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
                 ) { Text(stringResource(R.string.auth_new)) }
                 // a KanadeKey made on this phone: fingerprint instead of typing the password
-                val keyId = remember { KanadeKey.localId(ctx) }
+                var keyIdState by remember { mutableStateOf(KanadeKey.localId(ctx)) }
+                val keyId = keyIdState
                 if (keyId != null) {
                     FilledTonalButton(
                         onClick = {
@@ -190,6 +191,7 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                                 KanadeKey.sign(
                                     ctx,
                                     ctx.getString(R.string.key_prompt),
+                                    ctx.getString(R.string.key_prompt_desc),
                                     ctx.getString(R.string.cancel),
                                     "kanadekey:$challenge:$keyId".toByteArray(),
                                     done = { sig ->
@@ -204,7 +206,19 @@ fun AuthScreen(onSignedIn: (Session) -> Unit, initialError: String = "") {
                                             finish(r)
                                         }
                                     },
-                                    failed = { busy = false },
+                                    failed = { why ->
+                                        busy = false
+                                        when (why) {
+                                            is KanadeKey.Fail.Cancelled -> Unit
+                                            is KanadeKey.Fail.Changed -> {
+                                                // the phone locked this key for good: forget it so the button goes, and say why
+                                                KanadeKey.forget(ctx)
+                                                keyIdState = null
+                                                error = ctx.getString(R.string.key_changed)
+                                            }
+                                            is KanadeKey.Fail.Other -> error = why.message?.takeIf { it.isNotBlank() } ?: ctx.getString(R.string.key_error)
+                                        }
+                                    },
                                 )
                             }
                         },

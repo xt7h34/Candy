@@ -1,5 +1,12 @@
 package com.candy
 
+import android.text.format.DateUtils
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.ui.graphics.lerp
+import java.text.DateFormat
+import java.util.Date
+import java.util.TimeZone
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Block
@@ -1344,17 +1351,37 @@ fun ChatScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            items(messages) { m ->
+            itemsIndexed(messages) { i, m ->
                 if (m.sys != null) {
                     SystemNote(m, shownName)
-                    return@items
+                    return@itemsIndexed
                 }
+                // messages from the same person close together join up into one block, and a new day gets its own label
+                val prev = messages.getOrNull(i - 1)
+                val next = messages.getOrNull(i + 1)
+                val newDay = prev == null || dayOf(prev.at) != dayOf(m.at)
+                val joinsPrev = !newDay && prev != null && prev.sys == null && !prev.deleted && prev.mine == m.mine && m.at - prev.at < 300_000L
+                val joinsNext = next != null && next.sys == null && !next.deleted && next.mine == m.mine &&
+                    dayOf(next.at) == dayOf(m.at) && next.at - m.at < 300_000L
+                val big = 20.dp
+                val small = 6.dp
+                val bubbleShape = if (m.mine) {
+                    RoundedCornerShape(topStart = big, topEnd = if (joinsPrev) small else big, bottomEnd = if (joinsNext) small else big, bottomStart = big)
+                } else {
+                    RoundedCornerShape(topStart = if (joinsPrev) small else big, topEnd = big, bottomEnd = big, bottomStart = if (joinsNext) small else big)
+                }
+                val mineColor = theme.mine ?: MaterialTheme.colorScheme.primary
+                val mineBrush = Brush.linearGradient(
+                    listOf(mineColor, if (theme.mine == null) lerp(mineColor, MaterialTheme.colorScheme.tertiary, 0.55f) else lerp(mineColor, Color.Black, 0.18f)),
+                )
                 val isSel = selected?.n == m.n
                 var drag by remember(m.n) { mutableStateOf(0f) }
                 var dragging by remember(m.n) { mutableStateOf(false) }
                 val shownDrag by animateFloatAsState(if (dragging) drag else 0f, label = "swipe")
+                Column(Modifier.fillMaxWidth().padding(top = if (joinsPrev || i == 0) 0.dp else 6.dp)) {
+                if (newDay) DayChip(m.at)
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -1418,11 +1445,11 @@ fun ChatScreen(
                         } else {
                             Column(
                                 Modifier
-                                    .widthIn(max = 260.dp)
-                                    .clip(MaterialTheme.shapes.medium)
+                                    .widthIn(max = 280.dp)
+                                    .clip(bubbleShape)
                                     .combinedClickable(onClick = {}, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); selected = m })
-                                    .background(if (m.mine) (theme.mine ?: MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .then(if (m.mine) Modifier.background(mineBrush) else Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 val textColor = if (m.mine) (theme.onMine ?: MaterialTheme.colorScheme.onPrimary) else MaterialTheme.colorScheme.onSurface
@@ -1443,7 +1470,7 @@ fun ChatScreen(
                                                 ),
                                         ) {
                                             PostImage(loopId, net.token, true, 1f)
-                                            Text("▶", color = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+                                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).size(24.dp))
                                         }
                                         Text(m.loopOwnerName.ifBlank { m.loopOwnerHash }, color = textColor, style = MaterialTheme.typography.labelSmall)
                                     }
@@ -1494,11 +1521,20 @@ fun ChatScreen(
                                 if (m.edited) {
                                     Text(stringResource(R.string.msg_edited), color = textColor.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
                                 }
+                                // the time, small, at the end of the last message of a block
+                                if (!joinsNext) {
+                                    Text(
+                                        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(m.at)),
+                                        color = textColor.copy(alpha = 0.6f),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.align(Alignment.End),
+                                    )
+                                }
                             }
                         }
                         ReactionChips(m) { react(m, m.myReaction.orEmpty()) }
                         if (m.mine && m.n == lastSeenN) {
-                            Text("👁", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 2.dp))
+                            Icon(Icons.Rounded.Visibility, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp).size(14.dp))
                         }
                         }
                       }
@@ -1538,6 +1574,7 @@ fun ChatScreen(
                             showDelete = true,
                         )
                     }
+                }
                 }
             }
             if (peerTyping && typingStyle == "bubble") {
@@ -2033,6 +2070,29 @@ private fun SearchResults(hits: List<SearchHit>, peerName: String, onPick: (Int)
                     Text(h.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
+        }
+    }
+}
+
+/** The day a time falls on, on this phone's clock, counted from 1970. Two times on the same day give the same number. */
+private fun dayOf(at: Long): Long = (at + TimeZone.getDefault().getOffset(at)) / 86_400_000L
+
+/** The little label between messages when the day changes: Today, Yesterday, or the date. */
+@Composable
+private fun DayChip(at: Long) {
+    val label = when {
+        DateUtils.isToday(at) -> stringResource(R.string.chat_today)
+        DateUtils.isToday(at + DateUtils.DAY_IN_MILLIS) -> stringResource(R.string.chat_yesterday)
+        else -> DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(at))
+    }
+    Box(Modifier.fillMaxWidth().padding(vertical = Space.sm), contentAlignment = Alignment.Center) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
         }
     }
 }

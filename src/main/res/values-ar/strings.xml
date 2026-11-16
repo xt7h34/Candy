@@ -405,4 +405,9 @@
     <string name="err_retry">جرّب تاني</string>
     <string name="auth_title_login">أهلاً بعودتك</string>
     <string name="auth_title_register">أنشئ حسابك</string>
+    <string name="key_changed">بصماتك اتغيرت فاتمسح المفتاح عشان أمانك. ادخل بالباسوورد وبعدين ضيف المفتاح تاني من الإعدادات ← الأمان.</string>
+    <string name="key_error">مقدرناش نستخدم المفتاح. جرّب تاني أو ادخل بالباسوورد.</string>
+    <string name="key_prompt_desc">أكّد إنك إنت عشان تدخل بـ Kanade Key.</string>
+    <string name="chat_today">النهارده</string>
+    <string name="chat_yesterday">إمبارح</string>
 </resources>

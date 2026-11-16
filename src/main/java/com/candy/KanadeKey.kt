@@ -2,10 +2,12 @@ package com.candy
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.annotation.RequiresApi
@@ -24,6 +26,18 @@ import java.security.spec.ECGenParameterSpec
  */
 object KanadeKey {
     private const val PREFS = "candy_kanade_key"
+
+    /** Why a sign-in with the key did not happen. */
+    sealed class Fail {
+        /** You closed the fingerprint box: nothing to say. */
+        object Cancelled : Fail()
+
+        /** A new fingerprint was added (or the key is gone), so the phone locked the old key for good. */
+        object Changed : Fail()
+
+        /** Anything else: too many tries, the sensor busy, and so on. [message] is the phone's own words. */
+        class Other(val message: String?) : Fail()
+    }
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -48,12 +62,12 @@ object KanadeKey {
     }
 
     /** Asks for the fingerprint, then signs [message]. */
-    fun sign(c: Context, title: String, cancel: String, message: ByteArray, done: (ByteArray) -> Unit, failed: () -> Unit) {
+    fun sign(c: Context, title: String, description: String, cancel: String, message: ByteArray, done: (ByteArray) -> Unit, failed: (Fail) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            failed()
+            failed(Fail.Other(null))
             return
         }
-        Impl.sign(c, title, cancel, message, done, failed)
+        Impl.sign(c, title, description, cancel, message, done, failed)
     }
 
     fun b64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
@@ -105,20 +119,25 @@ object KanadeKey {
             null
         }
 
-        fun sign(c: Context, title: String, cancel: String, message: ByteArray, done: (ByteArray) -> Unit, failed: () -> Unit) {
+        fun sign(c: Context, title: String, description: String, cancel: String, message: ByteArray, done: (ByteArray) -> Unit, failed: (Fail) -> Unit) {
             try {
                 val priv = store().getKey(ALIAS, null) as? PrivateKey
                 if (priv == null) {
-                    failed()
+                    failed(Fail.Changed)
                     return
                 }
                 val sig = Signature.getInstance("SHA256withECDSA")
-                sig.initSign(priv)
-                val prompt = BiometricPrompt.Builder(c)
+                sig.initSign(priv)   // throws when the phone locked the key after a new fingerprint was added
+                val builder = BiometricPrompt.Builder(c)
                     .setTitle(title)
-                    .setNegativeButton(cancel, c.mainExecutor) { _, _ -> failed() }
-                    .build()
-                prompt.authenticate(
+                    .setDescription(description)
+                    .setNegativeButton(cancel, c.mainExecutor) { _, _ -> failed(Fail.Cancelled) }
+                // the key opens only with a strong fingerprint, so the box has to ask for exactly that
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setConfirmationRequired(false)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    builder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                }
+                builder.build().authenticate(
                     BiometricPrompt.CryptoObject(sig),
                     CancellationSignal(),
                     c.mainExecutor,
@@ -126,25 +145,28 @@ object KanadeKey {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                             val s = result.cryptoObject?.signature
                             if (s == null) {
-                                failed()
+                                failed(Fail.Other(null))
                                 return
                             }
                             try {
                                 s.update(message)
                                 done(s.sign())
                             } catch (e: Exception) {
-                                failed()
+                                failed(Fail.Other(e.message))
                             }
                         }
 
                         override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                            failed()
+                            val closed = errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
+                                errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED
+                            failed(if (closed) Fail.Cancelled else Fail.Other(errString?.toString()))
                         }
                     },
                 )
+            } catch (e: KeyPermanentlyInvalidatedException) {
+                failed(Fail.Changed)
             } catch (e: Exception) {
-                // The key is gone or was invalidated (a new fingerprint was added).
-                failed()
+                failed(Fail.Other(e.message))
             }
         }
     }
