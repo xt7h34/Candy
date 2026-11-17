@@ -18,4 +18,16 @@
     <string name="ai_melt">Candy\'s melt: %1$d%%</string>
     <string name="ai_locked">Candy is melted right now 🫠 She\'ll be back in %1$s</string>
     <string name="ai_hours_min">%1$dh %2$dm</string>
+    <string name="ai_thinking">Thinking…</string>
+    <string name="ai_mem_menu">Memory</string>
+    <string name="ai_mem_saved">Saved to memory: %1$s</string>
+    <string name="ai_mem_removed">Removed from memory: %1$s</string>
+    <string name="ai_mem_title">Candy\'s memory</string>
+    <string name="ai_mem_on">Use memory</string>
+    <string name="ai_mem_desc">Candy remembers what you ask her to, or clear useful things like your name and interests. You can delete anything, or turn memory off.</string>
+    <string name="ai_mem_empty">Nothing remembered yet.</string>
+    <string name="ai_mem_add_hint">Add something for Candy to remember</string>
+    <string name="ai_mem_count">%1$d of %2$d</string>
+    <string name="ai_mem_clear_all">Clear all</string>
+    <string name="ai_mem_clear_q">Delete everything Candy remembers about you?</string>
 </resources>

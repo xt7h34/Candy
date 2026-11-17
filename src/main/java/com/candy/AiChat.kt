@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +29,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -37,6 +40,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,11 +74,29 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** One message in the conversation with Candy. A negative [n] means it was just sent and the bot has not answered yet. */
-private class AiMsg(val n: Long, val role: String, val text: String, val at: Long) {
+private class AiMsg(
+    val n: Long,
+    val role: String,
+    val text: String,
+    val at: Long,
+    val memAdded: List<String> = emptyList(),
+    val memRemoved: List<String> = emptyList(),
+) {
     val mine: Boolean get() = role == "user"
 }
 
-private fun JSONObject.toAiMsg() = AiMsg(optLong("n"), optString("role"), optString("text"), optLong("at"))
+private fun JSONObject.toAiMsg(): AiMsg {
+    val mem = optJSONObject("mem")
+    val added = ArrayList<String>()
+    mem?.optJSONArray("a")?.let { a ->
+        for (i in 0 until a.length()) a.optJSONObject(i)?.optString("text")?.takeIf { it.isNotBlank() }?.let { added.add(it) }
+    }
+    val removed = ArrayList<String>()
+    mem?.optJSONArray("r")?.let { a ->
+        for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotBlank() }?.let { removed.add(it) }
+    }
+    return AiMsg(optLong("n"), optString("role"), optString("text"), optLong("at"), added, removed)
+}
 
 private fun JSONArray?.toAiMsgs(): List<AiMsg> {
     if (this == null) return emptyList()
@@ -185,7 +207,14 @@ private fun AiTypingBubble() {
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
-            Text("• • •", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("• • •", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.ai_thinking), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -232,6 +261,33 @@ private fun AiBubble(m: AiMsg) {
 }
 
 @Composable
+private fun MemChip(label: String, onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+        modifier = Modifier.clip(CircleShape).clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/** "Saved to memory: ..." under the reply that changed Candy's memory. */
+@Composable
+private fun AiMemChips(m: AiMsg, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(start = 34.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (t in m.memAdded) MemChip("🧠 " + stringResource(R.string.ai_mem_saved, t), onClick)
+        for (t in m.memRemoved) MemChip("🧠 " + stringResource(R.string.ai_mem_removed, t), onClick)
+    }
+}
+
+@Composable
 private fun AiDayChip(label: String) {
     Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -247,7 +303,7 @@ private fun AiDayChip(label: String) {
 
 /** The conversation with Candy: last 200 messages kept by the bot, the model sees the last 20. */
 @Composable
-fun AiChatScreen(net: Net, onBack: () -> Unit) {
+fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val msgs = remember { mutableStateListOf<AiMsg>() }
@@ -385,6 +441,10 @@ fun AiChatScreen(net: Net, onBack: () -> Unit) {
                 AppIconButton(Icons.Rounded.MoreVert, null, { menu = true })
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.ai_mem_menu)) },
+                        onClick = { menu = false; onOpenMemory() },
+                    )
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.ai_new_chat)) },
                         onClick = { menu = false; confirmClear = true },
                     )
@@ -455,6 +515,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (newDay) AiDayChip(aiDayLabel(ctx, m.at))
                     AiBubble(m)
+                    if (m.memAdded.isNotEmpty() || m.memRemoved.isNotEmpty()) AiMemChips(m, onOpenMemory)
                 }
             }
             if (sending) item(key = "typing") { AiTypingBubble() }
@@ -524,6 +585,173 @@ fun AiChatScreen(net: Net, onBack: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) }
             },
+        )
+    }
+}
+
+private class AiMem(val id: Long, val text: String)
+
+/** What Candy remembers about you: see it, add to it, delete from it, or turn it off. */
+@Composable
+fun AiMemoryScreen(net: Net, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val items = remember { mutableStateListOf<AiMem>() }
+    var on by remember { mutableStateOf(true) }
+    var max by remember { mutableStateOf(50) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf("") }
+    var confirmAll by remember { mutableStateOf(false) }
+    val cs = MaterialTheme.colorScheme
+
+    fun load() {
+        scope.launch {
+            val r = net.get("/candy/ai/memory")
+            loading = false
+            if (r.ok) {
+                items.clear()
+                val a = r.body?.optJSONArray("items")
+                if (a != null) for (i in 0 until a.length()) a.optJSONObject(i)?.let { items.add(AiMem(it.optLong("id"), it.optString("text"))) }
+                on = r.body?.optBoolean("on", true) ?: true
+                max = r.body?.optInt("max", 50) ?: 50
+                error = ""
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    fun add() {
+        val t = draft.trim()
+        if (t.isEmpty()) return
+        scope.launch {
+            val r = net.post("/candy/ai/memory/add", JSONObject().put("text", t))
+            if (r.ok) {
+                draft = ""
+                error = ""
+                load()
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    fun remove(id: Long) {
+        scope.launch {
+            val r = net.post("/candy/ai/memory/delete", JSONObject().put("id", id))
+            if (r.ok) items.removeAll { it.id == id } else error = r.message(ctx)
+        }
+    }
+
+    fun removeAll() {
+        scope.launch {
+            val r = net.post("/candy/ai/memory/delete", JSONObject().put("all", true))
+            if (r.ok) items.clear() else error = r.message(ctx)
+        }
+    }
+
+    fun toggle(v: Boolean) {
+        on = v
+        scope.launch {
+            val r = net.post("/candy/ai/memory/toggle", JSONObject().put("on", v))
+            if (!r.ok) {
+                on = !v
+                error = r.message(ctx)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    Column(Modifier.fillMaxWidth().imePadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            AppIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), onBack)
+            Text(
+                stringResource(R.string.ai_mem_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+            )
+            if (items.isNotEmpty()) {
+                TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.ai_mem_clear_all)) }
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(CandyBrand.hairline()))
+
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(key = "switch") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.ai_mem_on), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Switch(checked = on, onCheckedChange = { toggle(it) })
+                }
+            }
+            item(key = "desc") { Muted(stringResource(R.string.ai_mem_desc)) }
+            if (error.isNotBlank()) item(key = "error") { ErrorText(error) { error = ""; load() } }
+            if (!loading && items.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        stringResource(R.string.ai_mem_empty),
+                        color = cs.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else if (items.isNotEmpty()) {
+                item(key = "count") { Muted(stringResource(R.string.ai_mem_count, items.size, max)) }
+            }
+            items(items, key = { it.id }) { m ->
+                Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(start = 14.dp, top = 2.dp, bottom = 2.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(m.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                        AppIconButton(Icons.Rounded.Delete, null, { remove(m.id) })
+                    }
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = cs.surfaceContainerHigh, modifier = Modifier.weight(1f)) {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    if (draft.isEmpty()) Text(stringResource(R.string.ai_mem_add_hint), color = cs.onSurfaceVariant)
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it.take(120) },
+                        textStyle = LocalTextStyle.current.copy(color = cs.onSurface),
+                        cursorBrush = SolidColor(cs.primary),
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            val canAdd = draft.isNotBlank()
+            Surface(
+                shape = CircleShape,
+                color = if (canAdd) cs.primary else cs.surfaceContainerHigh,
+                modifier = Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canAdd) { add() },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, tint = if (canAdd) cs.onPrimary else cs.onSurfaceVariant)
+                }
+            }
+        }
+    }
+
+    if (confirmAll) {
+        AlertDialog(
+            onDismissRequest = { confirmAll = false },
+            text = { Text(stringResource(R.string.ai_mem_clear_q)) },
+            confirmButton = { TextButton(onClick = { confirmAll = false; removeAll() }) { Text(stringResource(R.string.ai_delete)) } },
+            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

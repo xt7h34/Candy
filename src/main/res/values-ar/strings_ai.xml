@@ -18,4 +18,16 @@
     <string name="ai_melt">ذوبان كاندي: %1$d%%</string>
     <string name="ai_locked">كاندي دايبة دلوقتي 🫠 هترجع بعد %1$s</string>
     <string name="ai_hours_min">%1$d س %2$d د</string>
+    <string name="ai_thinking">بتفكر…</string>
+    <string name="ai_mem_menu">الذاكرة</string>
+    <string name="ai_mem_saved">اتحفظ في الذاكرة: %1$s</string>
+    <string name="ai_mem_removed">اتمسح من الذاكرة: %1$s</string>
+    <string name="ai_mem_title">ذاكرة كاندي</string>
+    <string name="ai_mem_on">استخدام الذاكرة</string>
+    <string name="ai_mem_desc">كاندي بتفتكر اللي تطلب منها تفتكره، أو المعلومات المفيدة الواضحة زي اسمك واهتماماتك. وتقدر تمسح أي حاجة، أو تقفل الذاكرة.</string>
+    <string name="ai_mem_empty">لسه مفيش حاجة محفوظة.</string>
+    <string name="ai_mem_add_hint">ضيف حاجة تفتكرها كاندي</string>
+    <string name="ai_mem_count">%1$d من %2$d</string>
+    <string name="ai_mem_clear_all">مسح الكل</string>
+    <string name="ai_mem_clear_q">تمسح كل اللي كاندي فاكراه عنك؟</string>
 </resources>
