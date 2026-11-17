@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_name">Candy</string>
+    <string name="ai_badge">AI</string>
+    <string name="ai_row_hint">Chat with Candy, your assistant</string>
+    <string name="ai_subtitle">AI assistant</string>
+    <string name="ai_hint">Message Candy</string>
+    <string name="ai_empty_title">Hi, I\'m Candy 🍬</string>
+    <string name="ai_empty_text">Ask me anything, or just chat with me.</string>
+    <string name="ai_disclaimer">Candy is an AI and can make mistakes.</string>
+    <string name="ai_sugg_1">Explain something simply</string>
+    <string name="ai_sugg_2">Help me write a message</string>
+    <string name="ai_sugg_3">Just chat with me</string>
+    <string name="ai_new_chat">New chat</string>
+    <string name="ai_new_chat_q">Delete this conversation and start over?</string>
+    <string name="ai_delete">Delete</string>
+    <string name="ai_load_older">Load older messages</string>
+    <string name="ai_melt">Candy\'s melt: %1$d%%</string>
+    <string name="ai_locked">Candy is melted right now 🫠 She\'ll be back in %1$s</string>
+    <string name="ai_hours_min">%1$dh %2$dm</string>
+</resources>

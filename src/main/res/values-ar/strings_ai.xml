@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_name">كاندي</string>
+    <string name="ai_badge">AI</string>
+    <string name="ai_row_hint">سولف مع كاندي، مساعدتك</string>
+    <string name="ai_subtitle">مساعدة ذكاء اصطناعي</string>
+    <string name="ai_hint">اكتب لكاندي</string>
+    <string name="ai_empty_title">أهلاً، أنا كاندي 🍬</string>
+    <string name="ai_empty_text">اسألني في أي حاجة، أو سولف معايا.</string>
+    <string name="ai_disclaimer">كاندي ذكاء اصطناعي وممكن تغلط.</string>
+    <string name="ai_sugg_1">اشرحيلي حاجة ببساطة</string>
+    <string name="ai_sugg_2">ساعديني أكتب رسالة</string>
+    <string name="ai_sugg_3">سولفي معايا</string>
+    <string name="ai_new_chat">محادثة جديدة</string>
+    <string name="ai_new_chat_q">تمسح المحادثة دي وتبدأ من جديد؟</string>
+    <string name="ai_delete">مسح</string>
+    <string name="ai_load_older">تحميل الأقدم</string>
+    <string name="ai_melt">ذوبان كاندي: %1$d%%</string>
+    <string name="ai_locked">كاندي دايبة دلوقتي 🫠 هترجع بعد %1$s</string>
+    <string name="ai_hours_min">%1$d س %2$d د</string>
+</resources>

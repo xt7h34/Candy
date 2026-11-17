@@ -269,6 +269,7 @@ fun ChatsScreen(
     onOpenChat: (String) -> Unit,
     onOpenFlare: (String) -> Unit,
     onSendFlare: (String) -> Unit,
+    onOpenAi: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -374,6 +375,8 @@ fun ChatsScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Candy (the AI) is always the first row
+        item(key = "candy-ai") { CandyAiRow(net, refreshKey, onOpenAi) }
         // my drifts that are alive (tap Edit to change the text) and a new drift, right above the chats
         item {
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

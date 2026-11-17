@@ -220,6 +220,7 @@ sealed class Dest {
     class Story(val hash: String) : Dest()
     class Chat(val hash: String) : Dest()
     class ChatSettings(val hash: String) : Dest()
+    object AiChat : Dest()
     object Camera : Dest()
     object StageEdit : Dest()
     object LoopEdit : Dest()
@@ -354,7 +355,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
         top is Dest.Story || top is Dest.LoopPlayer || top is Dest.FlareView
 
     // the floating bar is on every screen except the chat and the new-track form, which have a keyboard
-    val showBar = !fullScreen && (top == null || !(top is Dest.Chat || top is Dest.NewPost))
+    val showBar = !fullScreen && (top == null || !(top is Dest.Chat || top is Dest.AiChat || top is Dest.NewPost))
     var barPx by remember { mutableStateOf(0) }
     val barInset = if (showBar) with(LocalDensity.current) { barPx.toDp() } else 0.dp
 
@@ -502,6 +503,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onFlare = { h -> openCamera("flare", h) },
                             )
                             is Dest.ChatSettings -> ChatSettingsScreen(net, top.hash, back, ::openProfile)
+                            Dest.AiChat -> AiChatScreen(net, back)
                             Dest.Memories -> MemoriesScreen(
                                 onBack = back,
                                 onUse = { picked, dest ->
@@ -595,6 +597,7 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                                 onOpenChat = { stack.add(Dest.Chat(it)) },
                                 onOpenFlare = { stack.add(Dest.FlareView(it)) },
                                 onSendFlare = { openCamera("flare", it) },
+                                onOpenAi = { stack.add(Dest.AiChat) },
                             )
                             else -> MeScreen(
                                 net = net,

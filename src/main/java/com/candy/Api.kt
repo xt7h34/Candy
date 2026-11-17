@@ -45,14 +45,14 @@ object CandyApi {
     fun urlOf(path: String): String = base + path
 
     /** GET when [body] is null, POST otherwise. */
-    suspend fun call(path: String, body: JSONObject? = null, token: String? = null, ifNoneMatch: String? = null): ApiResult =
+    suspend fun call(path: String, body: JSONObject? = null, token: String? = null, ifNoneMatch: String? = null, readTimeoutMs: Int = 20000): ApiResult =
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
                 val c = URL(base + path).openConnection() as HttpURLConnection
                 conn = c
                 c.connectTimeout = if (remote != null) 10000 else 4000
-                c.readTimeout = 20000
+                c.readTimeout = readTimeoutMs
                 c.requestMethod = if (body == null) "GET" else "POST"
                 c.setRequestProperty("Accept", "application/json")
                 // ngrok shows a warning page to browsers; this tells it the caller is an app.
@@ -189,8 +189,9 @@ class Net(val token: String, private val onExpired: () -> Unit) {
     suspend fun peek(path: String): JSONObject? =
         ApiCache.read(ApiCache.keyOf(token, path))?.let { e -> runCatching { JSONObject(e.body) }.getOrNull() }
 
-    suspend fun post(path: String, body: JSONObject = JSONObject()): ApiResult =
-        guard(CandyApi.call(path, body, token))
+    /** [readTimeoutMs] is longer for calls where the bot waits on an AI model (Candy's replies). */
+    suspend fun post(path: String, body: JSONObject = JSONObject(), readTimeoutMs: Int = 20000): ApiResult =
+        guard(CandyApi.call(path, body, token, null, readTimeoutMs))
 
     private fun guard(r: ApiResult): ApiResult {
         if (r.status == 401) onExpired()
