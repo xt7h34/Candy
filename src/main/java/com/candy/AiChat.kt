@@ -1,21 +1,32 @@
 package com.candy
 
 import android.content.Context
+import android.provider.Settings
 import android.text.format.DateUtils
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,21 +55,28 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -68,9 +86,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import kotlin.random.Random
 import org.json.JSONObject
 
 /** One message in the conversation with Candy. A negative [n] means it was just sent and the bot has not answered yet. */
@@ -143,8 +166,135 @@ private fun sameDay(a: Long, b: Long): Boolean {
     return (a + tz.getOffset(a)) / day == (b + tz.getOffset(b)) / day
 }
 
+/** The plan the bot reports: "plus", "pro", "elite", or empty. */
+private fun tierOf(o: JSONObject?): String = if (o == null || o.isNull("tier")) "" else o.optString("tier")
+
+// Where the eye and mouth layers sit on the 1254x1254 art, as fractions of its side.
+private const val ART = 1254f
+private const val EYES_X = 560f / ART
+private const val EYES_Y = 270f / ART
+private const val EYES_W = 370f / ART
+private const val EYES_H = 180f / ART
+private const val MOUTH_X = 680f / ART
+private const val MOUTH_Y = 448f / ART
+private const val MOUTH_W = 120f / ART
+private const val MOUTH_H = 82f / ART
+
+private enum class Eyes(val res: Int?) {
+    Open(null), Half(R.drawable.candy_eyes_half), Closed(R.drawable.candy_eyes_closed)
+}
+
+private enum class Mouth(val res: Int?) {
+    Closed(null), Oo(R.drawable.candy_mouth_oo), Slight(R.drawable.candy_mouth_slight), Ah(R.drawable.candy_mouth_ah)
+}
+
+/**
+ * Candy and her café as the chat's wallpaper, pinned to the top and fading into the chat.
+ * Plus: a still picture. Pro and Elite: she breathes, blinks, and her mouth moves while she answers
+ * ([talkTick] goes up on every reply and [talkMs] is how long she keeps talking).
+ */
 @Composable
-private fun AiAvatar(size: androidx.compose.ui.unit.Dp) {
+private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long) {
+    var eyes by remember { mutableStateOf(Eyes.Open) }
+    var mouth by remember { mutableStateOf(Mouth.Closed) }
+    val bg = MaterialTheme.colorScheme.background
+
+    val breathe: State<Float> = if (animated) {
+        rememberInfiniteTransition(label = "candy-breathe").animateFloat(
+            initialValue = 1f,
+            targetValue = 1.014f,
+            animationSpec = infiniteRepeatable(tween(3800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "candy-breathe-scale",
+        )
+    } else {
+        remember { mutableStateOf(1f) }
+    }
+
+    if (animated) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(Random.nextLong(2500L, 6500L))
+                eyes = Eyes.Half
+                delay(60)
+                eyes = Eyes.Closed
+                delay(90)
+                eyes = Eyes.Half
+                delay(60)
+                eyes = Eyes.Open
+            }
+        }
+        LaunchedEffect(talkTick) {
+            if (talkTick > 0) {
+                val shapes = listOf(Mouth.Slight, Mouth.Oo, Mouth.Ah, Mouth.Slight, Mouth.Closed, Mouth.Ah, Mouth.Oo)
+                val end = System.currentTimeMillis() + talkMs
+                var i = 0
+                while (System.currentTimeMillis() < end) {
+                    mouth = shapes[i % shapes.size]
+                    i++
+                    delay(130)
+                }
+                mouth = Mouth.Closed
+            }
+        }
+    }
+
+    // the art is not mirrored for right-to-left languages, so its pieces line up
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(bg).clipToBounds()) {
+            val side = maxWidth * 1.15f
+            val left = (maxWidth / 2 - side * 0.56f).coerceIn(maxWidth - side, 0.dp)
+            Box(Modifier.align(Alignment.TopStart).requiredSize(side).offset(x = left)) {
+                Image(
+                    painter = painterResource(R.drawable.candy_stage_bg),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = breathe.value
+                        scaleY = breathe.value
+                        transformOrigin = TransformOrigin(0.55f, 1f)
+                    },
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.candy_stage_body),
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    eyes.res?.let { r ->
+                        Image(
+                            painter = painterResource(r),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.offset(x = side * EYES_X, y = side * EYES_Y).requiredSize(side * EYES_W, side * EYES_H),
+                        )
+                    }
+                    mouth.res?.let { r ->
+                        Image(
+                            painter = painterResource(r),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.offset(x = side * MOUTH_X, y = side * MOUTH_Y).requiredSize(side * MOUTH_W, side * MOUTH_H),
+                        )
+                    }
+                }
+                // the bottom of the picture melts into the chat
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(side * 0.38f)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, bg))),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiAvatar(size: Dp) {
     Image(
         painter = painterResource(R.drawable.candy_ai_avatar),
         contentDescription = null,
@@ -316,7 +466,13 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     var lockedUntil by remember { mutableStateOf(0L) }
     var menu by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var tier by remember { mutableStateOf("") }
+    var talkTick by remember { mutableStateOf(0) }
+    var talkMs by remember { mutableStateOf(0L) }
     val listState = rememberLazyListState()
+    val reduceMotion = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
+    val themed = tier == "plus" || tier == "pro" || tier == "elite"
+    val animated = (tier == "pro" || tier == "elite") && !reduceMotion
 
     fun applyMelt(o: JSONObject?) {
         melt = o?.optInt("pct") ?: 0
@@ -332,6 +488,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 msgs.addAll(r.body?.optJSONArray("messages").toAiMsgs())
                 hasMore = r.body?.optBoolean("hasMore") == true
                 applyMelt(r.body?.optJSONObject("melt"))
+                tier = tierOf(r.body)
                 error = ""
             } else {
                 error = r.message(ctx)
@@ -366,7 +523,11 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 val u = r.body?.optJSONObject("user")?.toAiMsg()
                 val a = r.body?.optJSONObject("reply")?.toAiMsg()
                 if (idx >= 0) msgs[idx] = u ?: AiMsg(tempN, "user", text, System.currentTimeMillis())
-                if (a != null) msgs.add(a)
+                if (a != null) {
+                    msgs.add(a)
+                    talkMs = (a.text.length * 45L).coerceIn(1200L, 5000L)
+                    talkTick++
+                }
                 applyMelt(r.body?.optJSONObject("melt"))
                 return@launch
             }
@@ -418,10 +579,14 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     val locked = lockedUntil > System.currentTimeMillis()
     val cs = MaterialTheme.colorScheme
 
-    Column(Modifier.fillMaxWidth().imePadding()) {
+    Box(Modifier.fillMaxSize()) {
+    if (themed) CandyStage(animated, talkTick, talkMs)
+    Column(Modifier.fillMaxSize().imePadding()) {
         // header
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth()
+                .background(if (themed) cs.background.copy(alpha = 0.55f) else Color.Transparent)
+                .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), onBack)
@@ -465,7 +630,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom),
         ) {
             if (hasMore) {
                 item(key = "older") {
@@ -477,7 +642,9 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             if (!loading && msgs.isEmpty() && error.isBlank()) {
                 item(key = "empty") {
                     Column(
-                        Modifier.fillMaxWidth().padding(top = 36.dp, start = 16.dp, end = 16.dp),
+                        Modifier.fillMaxWidth().padding(top = 36.dp)
+                            .background(if (themed) cs.background.copy(alpha = 0.88f) else Color.Transparent, MaterialTheme.shapes.extraLarge)
+                            .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -573,6 +740,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 }
             }
         }
+    }
     }
 
     if (confirmClear) {
