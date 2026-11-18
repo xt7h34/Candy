@@ -3,6 +3,7 @@ package com.candy
 import android.content.Context
 import android.provider.Settings
 import android.text.format.DateUtils
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -73,6 +74,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -86,10 +90,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -185,57 +191,147 @@ private enum class Eyes(val res: Int?) {
 }
 
 private enum class Mouth(val res: Int?) {
-    Closed(null), Oo(R.drawable.candy_mouth_oo), Slight(R.drawable.candy_mouth_slight), Ah(R.drawable.candy_mouth_ah)
+    Closed(null), Oo(R.drawable.candy_mouth_oo), Slight(R.drawable.candy_mouth_slight), Ah(R.drawable.candy_mouth_ah), Bored(R.drawable.candy_mouth_bored)
 }
+
+private enum class Mood { Awake, Bored, Asleep }
 
 /**
  * Candy and her café as the chat's wallpaper, pinned to the top and fading into the chat.
- * Plus: a still picture. Pro and Elite: she breathes, blinks, and her mouth moves while she answers
- * ([talkTick] goes up on every reply and [talkMs] is how long she keeps talking).
+ * Plus: a still picture. Pro and Elite: she breathes and blinks, her mouth moves while she answers
+ * ([talkTick] goes up on every reply, [talkMs] is how long she keeps talking), and if nobody touches the screen
+ * ([lastActive] is the time of the last touch) she gets bored: half-closed eyes, a sigh, a yawn, and finally she falls asleep.
+ * Any touch wakes her up.
  */
 @Composable
-private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long) {
-    var eyes by remember { mutableStateOf(Eyes.Open) }
-    var mouth by remember { mutableStateOf(Mouth.Closed) }
-    val bg = MaterialTheme.colorScheme.background
+private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long, lastActive: Long) {
+    var mood by remember { mutableStateOf(Mood.Awake) }
+    var blinkEyes by remember { mutableStateOf<Eyes?>(null) }
+    var actEyes by remember { mutableStateOf<Eyes?>(null) }
+    var talkMouth by remember { mutableStateOf<Mouth?>(null) }
+    var actMouth by remember { mutableStateOf<Mouth?>(null) }
+    val bump = remember { Animatable(1f) }
+    val cs = MaterialTheme.colorScheme
+    val bg = cs.background
 
+    val eyes = actEyes ?: blinkEyes ?: when (mood) {
+        Mood.Awake -> Eyes.Open
+        Mood.Bored -> Eyes.Half
+        Mood.Asleep -> Eyes.Closed
+    }
+    val mouth = talkMouth ?: actMouth ?: if (mood == Mood.Bored) Mouth.Bored else Mouth.Closed
+
+    val transition = rememberInfiniteTransition(label = "candy-idle")
     val breathe: State<Float> = if (animated) {
-        rememberInfiniteTransition(label = "candy-breathe").animateFloat(
+        transition.animateFloat(
             initialValue = 1f,
             targetValue = 1.014f,
-            animationSpec = infiniteRepeatable(tween(3800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            animationSpec = infiniteRepeatable(
+                tween(if (mood == Mood.Awake) 3800 else if (mood == Mood.Bored) 4800 else 6200, easing = FastOutSlowInEasing),
+                RepeatMode.Reverse,
+            ),
             label = "candy-breathe-scale",
         )
     } else {
         remember { mutableStateOf(1f) }
     }
+    val zAlpha: State<Float> = if (animated) {
+        transition.animateFloat(
+            initialValue = 0.2f,
+            targetValue = 0.9f,
+            animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
+            label = "candy-z",
+        )
+    } else {
+        remember { mutableStateOf(0f) }
+    }
 
     if (animated) {
+        // blinking (slow and sleepy when she is bored, none when she sleeps)
         LaunchedEffect(Unit) {
             while (true) {
                 delay(Random.nextLong(2500L, 6500L))
-                eyes = Eyes.Half
-                delay(60)
-                eyes = Eyes.Closed
-                delay(90)
-                eyes = Eyes.Half
-                delay(60)
-                eyes = Eyes.Open
+                when (mood) {
+                    Mood.Awake -> {
+                        blinkEyes = Eyes.Half
+                        delay(60)
+                        blinkEyes = Eyes.Closed
+                        delay(90)
+                        blinkEyes = Eyes.Half
+                        delay(60)
+                        blinkEyes = null
+                    }
+                    Mood.Bored -> {
+                        blinkEyes = Eyes.Closed
+                        delay(260)
+                        blinkEyes = null
+                    }
+                    Mood.Asleep -> Unit
+                }
             }
         }
+        // her mouth moves while she answers
         LaunchedEffect(talkTick) {
             if (talkTick > 0) {
                 val shapes = listOf(Mouth.Slight, Mouth.Oo, Mouth.Ah, Mouth.Slight, Mouth.Closed, Mouth.Ah, Mouth.Oo)
                 val end = System.currentTimeMillis() + talkMs
                 var i = 0
                 while (System.currentTimeMillis() < end) {
-                    mouth = shapes[i % shapes.size]
+                    talkMouth = shapes[i % shapes.size]
                     i++
                     delay(130)
                 }
-                mouth = Mouth.Closed
+                talkMouth = null
             }
         }
+    }
+
+    // awake -> bored -> sigh -> yawn -> sigh -> asleep. Starts over on every touch.
+    LaunchedEffect(lastActive, animated) {
+        suspend fun sigh() {
+            actEyes = Eyes.Closed
+            actMouth = Mouth.Oo
+            bump.animateTo(1.03f, tween(800))
+            bump.animateTo(1f, tween(1000))
+            actEyes = null
+            actMouth = null
+        }
+
+        suspend fun yawn() {
+            actEyes = Eyes.Closed
+            actMouth = Mouth.Slight
+            delay(300)
+            actMouth = Mouth.Ah
+            bump.animateTo(1.025f, tween(900))
+            delay(500)
+            bump.animateTo(1f, tween(700))
+            actMouth = Mouth.Slight
+            delay(250)
+            actEyes = null
+            actMouth = null
+        }
+
+        val wasAsleep = mood == Mood.Asleep
+        mood = Mood.Awake
+        actEyes = null
+        actMouth = null
+        bump.snapTo(1f)
+        if (!animated) return@LaunchedEffect
+        if (wasAsleep) {
+            actEyes = Eyes.Half
+            delay(220)
+            actEyes = null
+        }
+        delay(25_000L)
+        mood = Mood.Bored
+        delay(8_000L)
+        sigh()
+        delay(12_000L)
+        yawn()
+        delay(10_000L)
+        sigh()
+        delay(15_000L)
+        mood = Mood.Asleep
     }
 
     // the art is not mirrored for right-to-left languages, so its pieces line up
@@ -243,7 +339,14 @@ private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long) {
         BoxWithConstraints(Modifier.fillMaxSize().background(bg).clipToBounds()) {
             val side = maxWidth * 1.15f
             val left = (maxWidth / 2 - side * 0.56f).coerceIn(maxWidth - side, 0.dp)
-            Box(Modifier.align(Alignment.TopStart).requiredSize(side).offset(x = left)) {
+            // placed exactly at x = left: requiredSize would re-centre the picture because it is wider than the screen
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    val s = side.roundToPx()
+                    val p = measurable.measure(Constraints.fixed(s, s))
+                    layout(constraints.maxWidth, s) { p.place(left.roundToPx(), 0) }
+                },
+            ) {
                 Image(
                     painter = painterResource(R.drawable.candy_stage_bg),
                     contentDescription = null,
@@ -252,8 +355,9 @@ private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long) {
                 )
                 Box(
                     Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = breathe.value
-                        scaleY = breathe.value
+                        val k = breathe.value * bump.value
+                        scaleX = k
+                        scaleY = k
                         transformOrigin = TransformOrigin(0.55f, 1f)
                     },
                 ) {
@@ -277,6 +381,15 @@ private fun CandyStage(animated: Boolean, talkTick: Int, talkMs: Long) {
                             contentDescription = null,
                             contentScale = ContentScale.FillBounds,
                             modifier = Modifier.offset(x = side * MOUTH_X, y = side * MOUTH_Y).requiredSize(side * MOUTH_W, side * MOUTH_H),
+                        )
+                    }
+                    if (mood == Mood.Asleep) {
+                        Text(
+                            "z z Z",
+                            color = cs.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = (side.value * 0.04f).sp,
+                            modifier = Modifier.offset(x = side * 0.70f, y = side * 0.16f).graphicsLayer { alpha = zAlpha.value },
                         )
                     }
                 }
@@ -469,6 +582,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     var tier by remember { mutableStateOf("") }
     var talkTick by remember { mutableStateOf(0) }
     var talkMs by remember { mutableStateOf(0L) }
+    var lastActive by remember { mutableStateOf(System.currentTimeMillis()) }
     val listState = rememberLazyListState()
     val reduceMotion = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     val themed = tier == "plus" || tier == "pro" || tier == "elite"
@@ -570,6 +684,9 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
 
     LaunchedEffect(Unit) { reload() }
 
+    // typing, sending and new messages count as someone being there, like a touch
+    LaunchedEffect(input, msgs.size, sending) { lastActive = System.currentTimeMillis() }
+
     // keep the newest message in view
     LaunchedEffect(msgs.size, sending) {
         val total = listState.layoutInfo.totalItemsCount
@@ -579,8 +696,19 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     val locked = lockedUntil > System.currentTimeMillis()
     val cs = MaterialTheme.colorScheme
 
-    Box(Modifier.fillMaxSize()) {
-    if (themed) CandyStage(animated, talkTick, talkMs)
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            // watches every touch without consuming it; once a second is enough to keep her awake
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    val now = System.currentTimeMillis()
+                    if (now - lastActive > 1000L) lastActive = now
+                }
+            }
+        },
+    ) {
+    if (themed) CandyStage(animated, talkTick, talkMs, lastActive)
     Column(Modifier.fillMaxSize().imePadding()) {
         // header
         Row(
