@@ -40,4 +40,7 @@
     <string name="ai_voice_gone">الرد ده مش موجود</string>
     <string name="ai_voice_fail">الصوت مش شغال دلوقتي</string>
     <string name="ai_stt_empty">مسمعتش حاجة، جرّب تاني</string>
+    <string name="ai_open_full">افتح المحادثة</string>
+    <string name="ai_screen_chip">عن الشاشة دي</string>
+    <string name="ai_screen_q">أنا في \"%1$s\" دلوقتي، ممكن تساعديني فيها؟</string>
 </resources>

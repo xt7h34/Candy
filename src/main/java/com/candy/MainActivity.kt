@@ -20,6 +20,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -100,6 +101,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         PushState.foreground = true
+    }
+
+    /** Every touch tells Candy someone is there (she gets bored and falls asleep when nobody touches the phone). */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        CandyIdle.touched()
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onStop() {
@@ -357,6 +364,20 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
 
     // the floating bar is on every screen except the chat and the new-track form, which have a keyboard
     val showBar = !fullScreen && (top == null || !(top is Dest.Chat || top is Dest.AiChat || top is Dest.AiMemory || top is Dest.NewPost))
+    // what Candy can tell about where you are, for "ask about this screen" in her quick chat
+    val screenLabel = if (top == null) {
+        stringResource(
+            when (tab) {
+                0 -> R.string.nav_feed
+                1 -> R.string.nav_loops
+                2 -> R.string.nav_search
+                3 -> R.string.nav_chats
+                else -> R.string.nav_me
+            },
+        )
+    } else {
+        ""
+    }
     var barPx by remember { mutableStateOf(0) }
     val barInset = if (showBar) with(LocalDensity.current) { barPx.toDp() } else 0.dp
 
@@ -624,6 +645,17 @@ fun Shell(session: Session, net: Net, openChat: String?, onChatOpened: () -> Uni
                             .graphicsLayer { translationY = barHide * size.height * 1.4f },
                     )
                 }
+                // Elite: Candy on the edge of the screen, everywhere except chats with people and her own screens
+                CandyFloatingHost(
+                    net = net,
+                    visible = !fullScreen &&
+                        !(top is Dest.Chat || top is Dest.ChatSettings || top is Dest.AiChat || top is Dest.AiMemory || top is Dest.NewPost) &&
+                        !(top == null && tab == 3),
+                    screenLabel = screenLabel,
+                    bottomInset = barInset,
+                    onOpenFull = { stack.add(Dest.AiChat) },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }

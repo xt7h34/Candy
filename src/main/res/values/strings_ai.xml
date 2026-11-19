@@ -40,4 +40,7 @@
     <string name="ai_voice_gone">That reply is no longer there</string>
     <string name="ai_voice_fail">The voice is not working right now</string>
     <string name="ai_stt_empty">I did not hear anything, try again</string>
+    <string name="ai_open_full">Open full chat</string>
+    <string name="ai_screen_chip">About this screen</string>
+    <string name="ai_screen_q">I\'m on \"%1$s\" right now. Can you help me with it?</string>
 </resources>

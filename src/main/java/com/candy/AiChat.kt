@@ -188,28 +188,28 @@ private fun sameDay(a: Long, b: Long): Boolean {
 /** The plan the bot reports: "plus", "pro", "elite", or empty. */
 private const val AI_REC_MAX_MS = 60_000L
 
-private fun tierOf(o: JSONObject?): String = if (o == null || o.isNull("tier")) "" else o.optString("tier")
+internal fun tierOf(o: JSONObject?): String = if (o == null || o.isNull("tier")) "" else o.optString("tier")
 
 // Where the eye and mouth layers sit on the 1254x1254 art, as fractions of its side.
-private const val ART = 1254f
-private const val EYES_X = 560f / ART
-private const val EYES_Y = 270f / ART
-private const val EYES_W = 370f / ART
-private const val EYES_H = 180f / ART
-private const val MOUTH_X = 680f / ART
-private const val MOUTH_Y = 448f / ART
-private const val MOUTH_W = 120f / ART
-private const val MOUTH_H = 82f / ART
+internal const val ART = 1254f
+internal const val EYES_X = 560f / ART
+internal const val EYES_Y = 270f / ART
+internal const val EYES_W = 370f / ART
+internal const val EYES_H = 180f / ART
+internal const val MOUTH_X = 680f / ART
+internal const val MOUTH_Y = 448f / ART
+internal const val MOUTH_W = 120f / ART
+internal const val MOUTH_H = 82f / ART
 
-private enum class Eyes(val res: Int?) {
+internal enum class Eyes(val res: Int?) {
     Open(null), Half(R.drawable.candy_eyes_half), Closed(R.drawable.candy_eyes_closed)
 }
 
-private enum class Mouth(val res: Int?) {
+internal enum class Mouth(val res: Int?) {
     Closed(null), Oo(R.drawable.candy_mouth_oo), Slight(R.drawable.candy_mouth_slight), Ah(R.drawable.candy_mouth_ah), Bored(R.drawable.candy_mouth_bored)
 }
 
-private enum class Mood { Awake, Bored, Asleep }
+internal enum class Mood { Awake, Bored, Asleep }
 
 /**
  * Candy and her café as the chat's wallpaper, pinned to the top and fading into the chat.
