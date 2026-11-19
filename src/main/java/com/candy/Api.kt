@@ -136,14 +136,14 @@ object CandyApi {
         }
 
     /** Downloads a file (a profile photo) with the same sign-in token. */
-    suspend fun fetchBytes(path: String, token: String, etag: String? = null): BytesResult =
+    suspend fun fetchBytes(path: String, token: String, etag: String? = null, readTimeoutMs: Int = 20000): BytesResult =
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
                 val c = URL(base + path).openConnection() as HttpURLConnection
                 conn = c
                 c.connectTimeout = if (remote != null) 10000 else 4000
-                c.readTimeout = 20000
+                c.readTimeout = readTimeoutMs
                 c.requestMethod = "GET"
                 c.setRequestProperty("ngrok-skip-browser-warning", "1")
                 c.setRequestProperty("Authorization", "Bearer $token")

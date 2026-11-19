@@ -30,4 +30,14 @@
     <string name="ai_mem_count">%1$d of %2$d</string>
     <string name="ai_mem_clear_all">Clear all</string>
     <string name="ai_mem_clear_q">Delete everything Candy remembers about you?</string>
+    <string name="ai_listening">Listening…</string>
+    <string name="ai_voice_play">Listen</string>
+    <string name="ai_voice_stop">Stop</string>
+    <string name="ai_voice_left">%1$d of %2$d voice replies left today</string>
+    <string name="ai_voice_plan">Candy\'s voice is for Pro and Elite</string>
+    <string name="ai_voice_limit">You have used today\'s voice replies</string>
+    <string name="ai_voice_empty">There is nothing to read out in this reply</string>
+    <string name="ai_voice_gone">That reply is no longer there</string>
+    <string name="ai_voice_fail">The voice is not working right now</string>
+    <string name="ai_stt_empty">I did not hear anything, try again</string>
 </resources>

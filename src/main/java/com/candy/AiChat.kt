@@ -1,8 +1,13 @@
 package com.candy
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.util.Base64
 import android.provider.Settings
 import android.text.format.DateUtils
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -42,8 +47,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -57,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -96,6 +105,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -173,6 +186,8 @@ private fun sameDay(a: Long, b: Long): Boolean {
 }
 
 /** The plan the bot reports: "plus", "pro", "elite", or empty. */
+private const val AI_REC_MAX_MS = 60_000L
+
 private fun tierOf(o: JSONObject?): String = if (o == null || o.isNull("tier")) "" else o.optString("tier")
 
 // Where the eye and mouth layers sit on the 1254x1254 art, as fractions of its side.
@@ -462,7 +477,7 @@ fun CandyAiRow(net: Net, refreshKey: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AiTypingBubble() {
+private fun AiTypingBubble(label: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Bottom) {
         AiAvatar(28.dp)
         Spacer(Modifier.size(6.dp))
@@ -476,7 +491,7 @@ private fun AiTypingBubble() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("• • •", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.ai_thinking), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -541,6 +556,38 @@ private fun MemChip(label: String, onClick: () -> Unit) {
     }
 }
 
+/** Plays Candy's reply out loud. While it plays it turns into a stop button. */
+@Composable
+private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.padding(start = 34.dp).clip(CircleShape).clickable(enabled = !loading, onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (loading) {
+                Text("…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Icon(
+                    if (playing) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    stringResource(if (playing) R.string.ai_voice_stop else R.string.ai_voice_play),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 /** "Saved to memory: ..." under the reply that changed Candy's memory. */
 @Composable
 private fun AiMemChips(m: AiMsg, onClick: () -> Unit) {
@@ -583,6 +630,17 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     var talkTick by remember { mutableStateOf(0) }
     var talkMs by remember { mutableStateOf(0L) }
     var lastActive by remember { mutableStateOf(System.currentTimeMillis()) }
+    var voiceAllowed by remember { mutableStateOf(false) }
+    var voiceLeft by remember { mutableStateOf(0) }
+    var voiceLimit by remember { mutableStateOf(0) }
+    var voiceBusy by remember { mutableStateOf(-1L) }
+    var listening by remember { mutableStateOf(false) }
+    val recorder = remember { VoiceRecorder(ctx) }
+    var recording by remember { mutableStateOf(false) }
+    var recPaused by remember { mutableStateOf(false) }
+    var limitReached by remember { mutableStateOf(false) }
+    var recElapsed by remember { mutableStateOf(0L) }
+    val amps = remember { mutableStateListOf<Float>() }
     val listState = rememberLazyListState()
     val reduceMotion = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     val themed = tier == "plus" || tier == "pro" || tier == "elite"
@@ -591,6 +649,12 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     fun applyMelt(o: JSONObject?) {
         melt = o?.optInt("pct") ?: 0
         lockedUntil = o?.optLong("lockedUntil") ?: 0L
+    }
+
+    fun refreshVoice(o: JSONObject?) {
+        voiceAllowed = o?.optBoolean("allowed") == true
+        voiceLeft = o?.optInt("left") ?: 0
+        voiceLimit = o?.optInt("limit") ?: 0
     }
 
     fun reload() {
@@ -603,6 +667,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 hasMore = r.body?.optBoolean("hasMore") == true
                 applyMelt(r.body?.optJSONObject("melt"))
                 tier = tierOf(r.body)
+                refreshVoice(r.body?.optJSONObject("voice"))
                 error = ""
             } else {
                 error = r.message(ctx)
@@ -621,8 +686,44 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
         }
     }
 
-    fun send() {
-        val text = input.trim()
+    // plays Candy's reply n out loud. The bot keeps what it already voiced, so playing a reply again costs nothing.
+    fun speak(n: Long) {
+        if (n <= 0 || voiceBusy == n) return
+        if (VoicePlayer.playingKey == "ai#$n") {
+            VoicePlayer.stop()
+            return
+        }
+        scope.launch {
+            voiceBusy = n
+            val r = CandyApi.fetchBytes("/candy/ai/voice?n=$n", net.token, null, 45_000)
+            voiceBusy = -1L
+            val bytes = r.bytes
+            if (r.status in 200..299 && bytes != null) {
+                val f = File(ctx.cacheDir, "ai_voice_$n.mp3")
+                withContext(Dispatchers.IO) { f.writeBytes(bytes) }
+                VoicePlayer.toggle("ai#$n", f)
+                if (VoicePlayer.playingKey == "ai#$n") {
+                    talkMs = VoicePlayer.durationMs.toLong() + 300L
+                    talkTick++
+                }
+                val t = net.get("/candy/ai/thread?limit=1")
+                if (t.ok) refreshVoice(t.body?.optJSONObject("voice"))
+            } else {
+                error = ctx.getString(
+                    when (r.status) {
+                        403 -> R.string.ai_voice_plan
+                        429 -> R.string.ai_voice_limit
+                        400 -> R.string.ai_voice_empty
+                        404 -> R.string.ai_voice_gone
+                        else -> R.string.ai_voice_fail
+                    },
+                )
+            }
+        }
+    }
+
+    // sends one message; with speakReply Candy's answer is read out loud as soon as it arrives (messages that came from the mic)
+    fun sendText(text: String, speakReply: Boolean) {
         if (text.isEmpty() || sending) return
         sending = true
         error = ""
@@ -639,8 +740,12 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 if (idx >= 0) msgs[idx] = u ?: AiMsg(tempN, "user", text, System.currentTimeMillis())
                 if (a != null) {
                     msgs.add(a)
-                    talkMs = (a.text.length * 45L).coerceIn(1200L, 5000L)
-                    talkTick++
+                    if (speakReply) {
+                        speak(a.n)   // her mouth moves with the voice, so it moves from there
+                    } else {
+                        talkMs = (a.text.length * 45L).coerceIn(1200L, 5000L)
+                        talkTick++
+                    }
                 }
                 applyMelt(r.body?.optJSONObject("melt"))
                 return@launch
@@ -669,6 +774,69 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
         }
     }
 
+    fun send() = sendText(input.trim(), false)
+
+    // ───── talking to her: record, turn it into text on the bot, send it and hear the answer ─────
+    fun startRecording() {
+        if (recorder.start()) {
+            recording = true
+            recPaused = false
+            limitReached = false
+            recElapsed = 0L
+            amps.clear()
+            error = ""
+        } else {
+            error = ctx.getString(R.string.voice_record_failed)
+        }
+    }
+
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startRecording() else error = ctx.getString(R.string.voice_no_permission)
+    }
+
+    fun onMicClick() {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startRecording()
+        } else {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun discardVoice() {
+        recorder.cancel()
+        recording = false
+        recPaused = false
+        limitReached = false
+        amps.clear()
+    }
+
+    fun sendVoice() {
+        val done = recorder.finish()
+        recording = false
+        recPaused = false
+        limitReached = false
+        amps.clear()
+        if (done == null || done.second < 800L) {
+            done?.first?.delete()
+            error = ctx.getString(R.string.voice_too_short)
+            return
+        }
+        scope.launch {
+            listening = true
+            error = ""
+            val bytes = withContext(Dispatchers.IO) { done.first.readBytes() }
+            done.first.delete()
+            val r = net.post("/candy/ai/transcribe", JSONObject().put("audio", Base64.encodeToString(bytes, Base64.NO_WRAP)), readTimeoutMs = 45_000)
+            listening = false
+            if (r.ok) {
+                val t = r.body?.optString("text").orEmpty().trim()
+                if (t.isEmpty()) error = ctx.getString(R.string.ai_stt_empty) else sendText(t, true)
+            } else {
+                error = r.message(ctx)
+            }
+        }
+    }
+
     fun clearAll() {
         scope.launch {
             val r = net.post("/candy/ai/clear")
@@ -683,6 +851,39 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     }
 
     LaunchedEffect(Unit) { reload() }
+
+    LaunchedEffect(recording, recPaused) {
+        while (recording) {
+            recElapsed = recorder.elapsedMs
+            if (!recPaused) {
+                amps.add((recorder.amplitude / 32767f).coerceIn(0f, 1f))
+                if (amps.size > 40) amps.removeAt(0)
+                if (recElapsed >= AI_REC_MAX_MS) {
+                    recorder.pause()
+                    recPaused = true
+                    limitReached = true
+                }
+            }
+            delay(100)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.cancel()
+            VoicePlayer.stop()
+        }
+    }
+
+    // when her voice stops (it ended, or you stopped it) her mouth stops too
+    val voicePlaying = VoicePlayer.playingKey?.startsWith("ai#") == true
+    LaunchedEffect(voicePlaying) {
+        lastActive = System.currentTimeMillis()
+        if (!voicePlaying && talkTick > 0) {
+            talkMs = 0L
+            talkTick++
+        }
+    }
 
     // typing, sending and new messages count as someone being there, like a touch
     LaunchedEffect(input, msgs.size, sending) { lastActive = System.currentTimeMillis() }
@@ -753,6 +954,10 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             }
         }
 
+        if (voiceAllowed && voiceLeft <= 5) {
+            Muted(stringResource(R.string.ai_voice_left, voiceLeft, voiceLimit), Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+        }
+
         // messages
         LazyColumn(
             state = listState,
@@ -811,16 +1016,45 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                     if (newDay) AiDayChip(aiDayLabel(ctx, m.at))
                     AiBubble(m)
                     if (m.memAdded.isNotEmpty() || m.memRemoved.isNotEmpty()) AiMemChips(m, onOpenMemory)
+                    if (voiceAllowed && !m.mine && m.n > 0) {
+                        AiVoiceChip(
+                            playing = VoicePlayer.playingKey == "ai#${m.n}",
+                            loading = voiceBusy == m.n,
+                            onClick = { speak(m.n) },
+                        )
+                    }
                 }
             }
-            if (sending) item(key = "typing") { AiTypingBubble() }
+            if (sending || listening) item(key = "typing") {
+                AiTypingBubble(stringResource(if (listening) R.string.ai_listening else R.string.ai_thinking))
+            }
             if (error.isNotBlank()) {
                 item(key = "error") { ErrorText(error) { error = ""; reload() } }
             }
         }
 
-        // input, or a note while Candy is melted
-        if (locked) {
+        // input, or a note while Candy is melted, or the bar while you record
+        if (recording) {
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                RecordingBar(
+                    elapsedMs = recElapsed,
+                    amps = amps,
+                    paused = recPaused,
+                    limitReached = limitReached,
+                    onDelete = { discardVoice() },
+                    onTogglePause = {
+                        if (recPaused) {
+                            recorder.resume()
+                            recPaused = false
+                        } else {
+                            recorder.pause()
+                            recPaused = true
+                        }
+                    },
+                    onSend = { sendVoice() },
+                )
+            }
+        } else if (locked) {
             Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
                 Surface(shape = MaterialTheme.shapes.large, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -832,7 +1066,8 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 }
             }
         } else {
-            val canSend = !sending && input.isNotBlank()
+            val showMic = voiceAllowed && input.isBlank()
+            val canSend = !sending && !listening && (showMic || input.isNotBlank())
             Row(
                 Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.Bottom,
@@ -856,11 +1091,11 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                 Surface(
                     shape = CircleShape,
                     color = if (canSend) cs.primary else cs.surfaceContainerHigh,
-                    modifier = Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canSend) { send() },
+                    modifier = Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canSend) { if (showMic) onMicClick() else send() },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.AutoMirrored.Rounded.Send,
+                            if (showMic) Icons.Rounded.Mic else Icons.AutoMirrored.Rounded.Send,
                             contentDescription = null,
                             tint = if (canSend) cs.onPrimary else cs.onSurfaceVariant,
                         )

@@ -30,4 +30,14 @@
     <string name="ai_mem_count">%1$d من %2$d</string>
     <string name="ai_mem_clear_all">مسح الكل</string>
     <string name="ai_mem_clear_q">تمسح كل اللي كاندي فاكراه عنك؟</string>
+    <string name="ai_listening">بتسمعك…</string>
+    <string name="ai_voice_play">اسمعها</string>
+    <string name="ai_voice_stop">وقّف</string>
+    <string name="ai_voice_left">باقي %1$d من %2$d رد صوتي النهارده</string>
+    <string name="ai_voice_plan">صوت كاندي لباقتي برو وإليت بس</string>
+    <string name="ai_voice_limit">خلّصت ردود كاندي الصوتية النهارده</string>
+    <string name="ai_voice_empty">مفيش كلام أنطقه في الرد ده</string>
+    <string name="ai_voice_gone">الرد ده مش موجود</string>
+    <string name="ai_voice_fail">الصوت مش شغال دلوقتي</string>
+    <string name="ai_stt_empty">مسمعتش حاجة، جرّب تاني</string>
 </resources>
