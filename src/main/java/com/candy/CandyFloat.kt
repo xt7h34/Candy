@@ -115,10 +115,33 @@ private object CandyFloatPrefs {
     }
 }
 
-// The window onto the art that the little Candy shows (fractions of the 1254x1254 picture): her hair, face and shoulders.
-private const val PEEK_X = 0.36f
-private const val PEEK_Y = 0.04f
-private const val PEEK_W = 0.46f
+// The peeking art (725x1000): the right border of the picture is the screen edge she hides behind.
+// The whole picture is shown (hair, face, shoulder and the hand on the edge); the top and bottom fade out.
+private const val ART_W = 725f
+private const val ART_H = 1000f
+// eyes and mouth pieces, placed on the art (art pixels)
+private const val P_EYES_X = 390f
+private const val P_EYES_Y = 285f
+private const val P_EYES_W = 337f
+private const val P_EYES_H = 170f
+private const val P_MOUTH_X = 580f
+private const val P_MOUTH_Y = 462f
+private const val P_MOUTH_W = 105f
+private const val P_MOUTH_H = 83f
+
+private fun peekEyesRes(e: Eyes): Int? = when (e) {
+    Eyes.Open -> null
+    Eyes.Half -> R.drawable.peek_eyes_half
+    Eyes.Closed -> R.drawable.peek_eyes_closed
+}
+
+private fun peekMouthRes(m: Mouth): Int? = when (m) {
+    Mouth.Closed -> null
+    Mouth.Slight -> R.drawable.peek_mouth_slight
+    Mouth.Oo -> R.drawable.peek_mouth_oo
+    Mouth.Ah -> R.drawable.peek_mouth_ah
+    Mouth.Bored -> R.drawable.peek_mouth_bored
+}
 
 /**
  * Elite only: Candy lives on the edge of the screen in every section except chats with people.
@@ -161,8 +184,8 @@ fun CandyFloatingHost(
     if (tier != "elite" || !visible) return
 
     BoxWithConstraints(modifier) {
-        val w = 92.dp
-        val h = 112.dp
+        val w = 104.dp
+        val h = 144.dp
         val wPx = with(density) { w.toPx() }
         val hPx = with(density) { h.toPx() }
         val maxWPx = with(density) { maxWidth.toPx() }
@@ -248,7 +271,7 @@ fun CandyFloatingHost(
                         )
                     },
             ) {
-                CandyPeek(w, h, !reduceMotion, talkTick, talkMs)
+                CandyPeek(w, h, !reduceMotion, talkTick, talkMs, mirror = edge == 0)
             }
         }
         }
@@ -271,9 +294,9 @@ fun CandyFloatingHost(
     }
 }
 
-/** Candy's hair, face and shoulders in a small window: she blinks and breathes, her mouth moves when she answers, and she gets bored and sleeps. */
+/** Candy peeking from behind the screen edge (mirrored on the left edge): she blinks and breathes, her mouth moves when she answers, and she gets bored and sleeps. */
 @Composable
-private fun CandyPeek(width: Dp, height: Dp, animated: Boolean, talkTick: Int, talkMs: Long) {
+private fun CandyPeek(width: Dp, height: Dp, animated: Boolean, talkTick: Int, talkMs: Long, mirror: Boolean) {
     var mood by remember { mutableStateOf(Mood.Awake) }
     var blinkEyes by remember { mutableStateOf<Eyes?>(null) }
     var actEyes by remember { mutableStateOf<Eyes?>(null) }
@@ -368,59 +391,66 @@ private fun CandyPeek(width: Dp, height: Dp, animated: Boolean, talkTick: Int, t
         }
     }
 
+    val sc = width / ART_W
     Box(
         Modifier
             .size(width, height)
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
-                // her shoulders fade out at the bottom instead of ending in a hard line
+                // her hair and body fade out at the top and bottom instead of ending in a hard line
                 drawRect(
-                    brush = Brush.verticalGradient(0.62f to Color.Black, 1f to Color.Transparent),
+                    brush = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.05f to Color.Black,
+                        0.93f to Color.Black,
+                        1f to Color.Transparent,
+                    ),
                     blendMode = BlendMode.DstIn,
                 )
             }
             .clipToBounds(),
     ) {
-        // the art is not mirrored for right-to-left languages, so its pieces line up
+        // the art is positioned in screen coordinates: right-to-left must not mirror it, the left edge mirrors it on purpose
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            val side = width / PEEK_W
             Box(
                 Modifier
-                    .layout { measurable, constraints ->
-                        val s = side.roundToPx()
-                        val p = measurable.measure(Constraints.fixed(s, s))
-                        layout(constraints.maxWidth, constraints.maxHeight) {
-                            p.place(-(PEEK_X * s).roundToInt(), -(PEEK_Y * s).roundToInt())
-                        }
-                    }
-                    .graphicsLayer {
-                        scaleX = breathe
-                        scaleY = breathe
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                    },
+                    .requiredSize(width, sc * ART_H)
+                    .align(Alignment.TopStart)
+                    .graphicsLayer { scaleX = if (mirror) -1f else 1f },
             ) {
-                Image(
-                    painter = painterResource(R.drawable.candy_stage_body),
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                eyes.res?.let { r ->
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = breathe
+                            scaleY = breathe
+                            // the wall side stays put, she breathes away from it
+                            transformOrigin = TransformOrigin(1f, 1f)
+                        },
+                ) {
                     Image(
-                        painter = painterResource(r),
+                        painter = painterResource(R.drawable.peek_body),
                         contentDescription = null,
                         contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.offset(x = side * EYES_X, y = side * EYES_Y).requiredSize(side * EYES_W, side * EYES_H),
+                        modifier = Modifier.fillMaxSize(),
                     )
-                }
-                mouth.res?.let { r ->
-                    Image(
-                        painter = painterResource(r),
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.offset(x = side * MOUTH_X, y = side * MOUTH_Y).requiredSize(side * MOUTH_W, side * MOUTH_H),
-                    )
+                    peekEyesRes(eyes)?.let { r ->
+                        Image(
+                            painter = painterResource(r),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.offset(x = sc * P_EYES_X, y = sc * P_EYES_Y).requiredSize(sc * P_EYES_W, sc * P_EYES_H),
+                        )
+                    }
+                    peekMouthRes(mouth)?.let { r ->
+                        Image(
+                            painter = painterResource(r),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.offset(x = sc * P_MOUTH_X, y = sc * P_MOUTH_Y).requiredSize(sc * P_MOUTH_W, sc * P_MOUTH_H),
+                        )
+                    }
                 }
             }
         }
@@ -430,7 +460,9 @@ private fun CandyPeek(width: Dp, height: Dp, animated: Boolean, talkTick: Int, t
                 color = cs.primary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 8.dp),
+                modifier = Modifier
+                    .align(if (mirror) Alignment.TopEnd else Alignment.TopStart)
+                    .padding(top = 8.dp, start = 26.dp, end = 26.dp),
             )
         }
     }
