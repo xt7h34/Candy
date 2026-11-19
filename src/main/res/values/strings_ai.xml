@@ -48,4 +48,6 @@
     <string name="ai_act_dislike">Dislike</string>
     <string name="ai_act_share">Share</string>
     <string name="ai_copied">Copied</string>
+    <string name="ai_act_resend">Answer again</string>
+    <string name="ai_share_fail">Could not make the picture to share.</string>
 </resources>

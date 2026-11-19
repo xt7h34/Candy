@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Base64
 import android.os.Build
@@ -52,17 +51,12 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.ThumbDown
-import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.ThumbDown
-import androidx.compose.material.icons.rounded.ThumbUp
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -95,7 +89,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -136,8 +132,12 @@ private class AiMsg(
     val at: Long,
     val memAdded: List<String> = emptyList(),
     val memRemoved: List<String> = emptyList(),
+    /** 1 = liked, -1 = disliked, 0 = nothing. */
+    val react: Int = 0,
 ) {
     val mine: Boolean get() = role == "user"
+
+    fun withReact(v: Int) = AiMsg(n, role, text, at, memAdded, memRemoved, v)
 }
 
 private fun JSONObject.toAiMsg(): AiMsg {
@@ -150,7 +150,7 @@ private fun JSONObject.toAiMsg(): AiMsg {
     mem?.optJSONArray("r")?.let { a ->
         for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotBlank() }?.let { removed.add(it) }
     }
-    return AiMsg(optLong("n"), optString("role"), optString("text"), optLong("at"), added, removed)
+    return AiMsg(optLong("n"), optString("role"), optString("text"), optLong("at"), added, removed, optInt("react"))
 }
 
 private fun JSONArray?.toAiMsgs(): List<AiMsg> {
@@ -569,7 +569,7 @@ private fun MemChip(label: String, onClick: () -> Unit) {
     }
 }
 
-/** Plays Candy's reply out loud. While it plays it turns into a stop button. */
+/** Plays Candy's reply out loud: an ear, no words. While it plays it turns into a stop button. */
 @Composable
 private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit) {
     Surface(
@@ -577,54 +577,23 @@ private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit)
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.clip(CircleShape).clickable(enabled = !loading, onClick = onClick),
     ) {
-        Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (loading) {
-                Text("…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.size(width = 40.dp, height = 30.dp), contentAlignment = Alignment.Center) {
+            if (playing) {
+                Icon(
+                    Icons.Rounded.Stop,
+                    contentDescription = stringResource(R.string.ai_voice_stop),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(17.dp),
+                )
             } else {
-                if (playing) {
-                    Icon(
-                        Icons.Rounded.Stop,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                } else {
-                    Icon(
-                        painterResource(R.drawable.ic_ear),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-                Text(
-                    stringResource(if (playing) R.string.ai_voice_stop else R.string.ai_voice_play),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Icon(
+                    painterResource(R.drawable.ic_ear),
+                    contentDescription = stringResource(R.string.ai_voice_play),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = if (loading) 0.4f else 1f),
+                    modifier = Modifier.size(17.dp),
                 )
             }
         }
-    }
-}
-
-/** Likes and dislikes on Candy's replies. For now they are kept on the phone only. */
-private object AiReact {
-    private fun sp(c: Context) = c.applicationContext.getSharedPreferences("candy_ai_react", Context.MODE_PRIVATE)
-
-    /** 1 = like, -1 = dislike, 0 = nothing. */
-    fun get(c: Context, n: Long): Int = sp(c).getInt("m$n", 0)
-
-    fun set(c: Context, n: Long, v: Int) {
-        val e = sp(c).edit()
-        if (v == 0) e.remove("m$n") else e.putInt("m$n", v)
-        e.apply()
-    }
-
-    fun clear(c: Context) {
-        sp(c).edit().clear().apply()
     }
 }
 
@@ -637,30 +606,22 @@ private fun copyAiText(ctx: Context, text: String) {
     if (Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, R.string.ai_copied, Toast.LENGTH_SHORT).show()
 }
 
-private fun shareAiText(ctx: Context, text: String) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, aiPlain(text))
-    }
-    runCatching { ctx.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-}
-
 @Composable
-private fun AiActionIcon(icon: ImageVector, description: Int, active: Boolean, onClick: () -> Unit) {
+private fun AiActionIcon(painter: Painter, description: Int, active: Boolean, flip: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            icon,
+            painter,
             contentDescription = stringResource(description),
             tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(17.dp).graphicsLayer { scaleY = if (flip) -1f else 1f },
         )
     }
 }
 
-/** Under each of Candy's replies: listen (Pro and Elite), copy, like, dislike, share. */
+/** Under each of Candy's replies: listen (Pro and Elite), copy, like, dislike, share, and on the last one, answer again. */
 @Composable
 private fun AiActionRow(
     voice: Boolean,
@@ -672,6 +633,7 @@ private fun AiActionRow(
     onDislike: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
+    onResend: (() -> Unit)?,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(start = 34.dp),
@@ -682,10 +644,11 @@ private fun AiActionRow(
             AiVoiceChip(playing = playing, loading = loading, onClick = onVoice)
             Spacer(Modifier.width(4.dp))
         }
-        AiActionIcon(Icons.Outlined.ContentCopy, R.string.ai_act_copy, false, onCopy)
-        AiActionIcon(if (react == 1) Icons.Rounded.ThumbUp else Icons.Outlined.ThumbUp, R.string.ai_act_like, react == 1, onLike)
-        AiActionIcon(if (react == -1) Icons.Rounded.ThumbDown else Icons.Outlined.ThumbDown, R.string.ai_act_dislike, react == -1, onDislike)
-        AiActionIcon(Icons.Outlined.Share, R.string.ai_act_share, false, onShare)
+        AiActionIcon(painterResource(R.drawable.ic_copy), R.string.ai_act_copy, false, onClick = onCopy)
+        AiActionIcon(painterResource(R.drawable.ic_like), R.string.ai_act_like, react == 1, onClick = onLike)
+        AiActionIcon(painterResource(R.drawable.ic_like), R.string.ai_act_dislike, react == -1, flip = true, onClick = onDislike)
+        AiActionIcon(painterResource(R.drawable.ic_share), R.string.ai_act_share, false, onClick = onShare)
+        if (onResend != null) AiActionIcon(rememberVectorPainter(Icons.Rounded.Refresh), R.string.ai_act_resend, false, onClick = onResend)
     }
 }
 
@@ -875,6 +838,75 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
         }
     }
 
+    // like / dislike: shown at once, then saved on the bot (put back if that fails)
+    fun react(n: Long, v: Int) {
+        val idx = msgs.indexOfFirst { it.n == n }
+        if (idx < 0) return
+        val old = msgs[idx]
+        msgs[idx] = old.withReact(v)
+        scope.launch {
+            val r = net.post("/candy/ai/react", JSONObject().put("n", n).put("v", v))
+            if (!r.ok) {
+                val at = msgs.indexOfFirst { it.n == n }
+                if (at >= 0) msgs[at] = msgs[at].withReact(old.react)
+                if (r.status != 404) error = r.message(ctx)
+            }
+        }
+    }
+
+    // "send again": Candy answers the last message once more and the new answer takes the place of the old one
+    fun regenerate() {
+        val last = msgs.lastOrNull() ?: return
+        if (sending || last.mine || last.n <= 0) return
+        sending = true
+        error = ""
+        msgs.removeAt(msgs.lastIndex)
+        scope.launch {
+            val r = net.post("/candy/ai/regenerate", JSONObject(), readTimeoutMs = 60_000)
+            sending = false
+            if (r.ok) {
+                val a = r.body?.optJSONObject("reply")?.toAiMsg()
+                if (a != null) {
+                    msgs.add(a)
+                    talkMs = (a.text.length * 45L).coerceIn(1200L, 5000L)
+                    talkTick++
+                } else {
+                    msgs.add(last)
+                }
+                applyMelt(r.body?.optJSONObject("melt"))
+                return@launch
+            }
+            if (r.status == 0) {
+                // the connection dropped: the new answer may have been saved, so show what the bot has
+                val check = net.get("/candy/ai/thread?limit=60")
+                if (check.ok) {
+                    val fresh = check.body?.optJSONArray("messages").toAiMsgs()
+                    msgs.clear()
+                    msgs.addAll(fresh)
+                    hasMore = check.body?.optBoolean("hasMore") == true
+                    applyMelt(check.body?.optJSONObject("melt"))
+                    return@launch
+                }
+            }
+            msgs.add(last)
+            error = r.message(ctx)
+            if (r.body?.optString("code") == "ai_locked") lockedUntil = r.body?.optLong("until") ?: 0L
+        }
+    }
+
+    // share: Candy's reply as a picture, in the colours of the chat
+    val snapColors = AiSnapColors(
+        bg = MaterialTheme.colorScheme.background.toArgb(),
+        bubble = MaterialTheme.colorScheme.surfaceContainerHigh.toArgb(),
+        text = MaterialTheme.colorScheme.onSurface.toArgb(),
+        accent = MaterialTheme.colorScheme.primary.toArgb(),
+    )
+    fun shareReply(text: String) {
+        scope.launch {
+            if (!shareAiSnapshot(ctx, text, snapColors)) error = ctx.getString(R.string.ai_share_fail)
+        }
+    }
+
     fun send() = sendText(input.trim(), false)
 
     // ───── talking to her: record, turn it into text on the bot, send it and hear the answer ─────
@@ -943,7 +975,6 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             val r = net.post("/candy/ai/clear")
             if (r.ok) {
                 msgs.clear()
-                AiReact.clear(ctx)
                 hasMore = false
                 error = ""
             } else {
@@ -1119,23 +1150,18 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                     AiBubble(m)
                     if (m.memAdded.isNotEmpty() || m.memRemoved.isNotEmpty()) AiMemChips(m, onOpenMemory)
                     if (!m.mine && m.n > 0) {
-                        var react by remember(m.n) { mutableStateOf(AiReact.get(ctx, m.n)) }
                         AiActionRow(
                             voice = voiceAllowed,
                             playing = VoicePlayer.playingKey == "ai#${m.n}",
                             loading = voiceBusy == m.n,
                             onVoice = { speak(m.n) },
-                            react = react,
-                            onLike = {
-                                react = if (react == 1) 0 else 1
-                                AiReact.set(ctx, m.n, react)
-                            },
-                            onDislike = {
-                                react = if (react == -1) 0 else -1
-                                AiReact.set(ctx, m.n, react)
-                            },
+                            react = m.react,
+                            onLike = { react(m.n, if (m.react == 1) 0 else 1) },
+                            onDislike = { react(m.n, if (m.react == -1) 0 else -1) },
                             onCopy = { copyAiText(ctx, m.text) },
-                            onShare = { shareAiText(ctx, m.text) },
+                            onShare = { shareReply(m.text) },
+                            // answering again only makes sense for the last reply
+                            onResend = if (!sending && i == msgs.lastIndex) ({ regenerate() }) else null,
                         )
                     }
                 }

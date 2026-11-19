@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Only the folder where updates are downloaded. -->
+    <!-- The folder where updates are downloaded. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Pictures of Candy's replies that the person shares. -->
+    <cache-path name="share" path="share/" />
 </paths>
