@@ -56,7 +56,6 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -569,34 +568,6 @@ private fun MemChip(label: String, onClick: () -> Unit) {
     }
 }
 
-/** Plays Candy's reply out loud: an ear, no words. While it plays it turns into a stop button. */
-@Composable
-private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.clip(CircleShape).clickable(enabled = !loading, onClick = onClick),
-    ) {
-        Box(Modifier.size(width = 40.dp, height = 30.dp), contentAlignment = Alignment.Center) {
-            if (playing) {
-                Icon(
-                    Icons.Rounded.Stop,
-                    contentDescription = stringResource(R.string.ai_voice_stop),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(17.dp),
-                )
-            } else {
-                Icon(
-                    painterResource(R.drawable.ic_ear),
-                    contentDescription = stringResource(R.string.ai_voice_play),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = if (loading) 0.4f else 1f),
-                    modifier = Modifier.size(17.dp),
-                )
-            }
-        }
-    }
-}
-
 private fun aiPlain(text: String): String = text.replace("**", "")
 
 private fun copyAiText(ctx: Context, text: String) {
@@ -607,7 +578,7 @@ private fun copyAiText(ctx: Context, text: String) {
 }
 
 @Composable
-private fun AiActionIcon(painter: Painter, description: Int, active: Boolean, flip: Boolean = false, onClick: () -> Unit) {
+private fun AiActionIcon(painter: Painter, description: Int, active: Boolean, flip: Boolean = false, size: Dp = 17.dp, onClick: () -> Unit) {
     Box(
         Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -616,7 +587,7 @@ private fun AiActionIcon(painter: Painter, description: Int, active: Boolean, fl
             painter,
             contentDescription = stringResource(description),
             tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(17.dp).graphicsLayer { scaleY = if (flip) -1f else 1f },
+            modifier = Modifier.size(size).graphicsLayer { scaleY = if (flip) -1f else 1f },
         )
     }
 }
@@ -641,14 +612,17 @@ private fun AiActionRow(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         if (voice) {
-            AiVoiceChip(playing = playing, loading = loading, onClick = onVoice)
-            Spacer(Modifier.width(4.dp))
+            if (playing) {
+                AiActionIcon(rememberVectorPainter(Icons.Rounded.Stop), R.string.ai_voice_stop, true, size = 22.dp, onClick = onVoice)
+            } else {
+                AiActionIcon(painterResource(R.drawable.ic_ear), R.string.ai_voice_play, false, onClick = { if (!loading) onVoice() })
+            }
         }
         AiActionIcon(painterResource(R.drawable.ic_copy), R.string.ai_act_copy, false, onClick = onCopy)
         AiActionIcon(painterResource(R.drawable.ic_like), R.string.ai_act_like, react == 1, onClick = onLike)
         AiActionIcon(painterResource(R.drawable.ic_like), R.string.ai_act_dislike, react == -1, flip = true, onClick = onDislike)
         AiActionIcon(painterResource(R.drawable.ic_share), R.string.ai_act_share, false, onClick = onShare)
-        if (onResend != null) AiActionIcon(rememberVectorPainter(Icons.Rounded.Refresh), R.string.ai_act_resend, false, onClick = onResend)
+        if (onResend != null) AiActionIcon(painterResource(R.drawable.ic_resend), R.string.ai_act_resend, false, onClick = onResend)
     }
 }
 
@@ -690,6 +664,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     var lockedUntil by remember { mutableStateOf(0L) }
     var menu by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var shareFor by remember { mutableStateOf<AiMsg?>(null) }
     var tier by remember { mutableStateOf("") }
     var talkTick by remember { mutableStateOf(0) }
     var talkMs by remember { mutableStateOf(0L) }
@@ -900,10 +875,20 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
         bubble = MaterialTheme.colorScheme.surfaceContainerHigh.toArgb(),
         text = MaterialTheme.colorScheme.onSurface.toArgb(),
         accent = MaterialTheme.colorScheme.primary.toArgb(),
+        mineText = MaterialTheme.colorScheme.onPrimary.toArgb(),
     )
     fun shareReply(text: String) {
         scope.launch {
-            if (!shareAiSnapshot(ctx, text, snapColors)) error = ctx.getString(R.string.ai_share_fail)
+            if (!shareAiReply(ctx, text, snapColors)) error = ctx.getString(R.string.ai_share_fail)
+        }
+    }
+
+    // the whole conversation that is loaded on the phone (only messages the bot already saved)
+    fun shareChat() {
+        val list = msgs.filter { it.n > 0 }.map { AiSnapMsg(it.text, it.mine) }
+        if (list.isEmpty()) return
+        scope.launch {
+            if (!shareAiConversation(ctx, list, snapColors)) error = ctx.getString(R.string.ai_share_fail)
         }
     }
 
@@ -1159,7 +1144,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                             onLike = { react(m.n, if (m.react == 1) 0 else 1) },
                             onDislike = { react(m.n, if (m.react == -1) 0 else -1) },
                             onCopy = { copyAiText(ctx, m.text) },
-                            onShare = { shareReply(m.text) },
+                            onShare = { shareFor = m },
                             // answering again only makes sense for the last reply
                             onResend = if (!sending && i == msgs.lastIndex) ({ regenerate() }) else null,
                         )
@@ -1256,6 +1241,29 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     }
     }
 
+    shareFor?.let { target ->
+        AlertDialog(
+            onDismissRequest = { shareFor = null },
+            title = { Text(stringResource(R.string.ai_share_title)) },
+            text = {
+                Column {
+                    AiShareChoice(stringResource(R.string.ai_share_one)) {
+                        shareFor = null
+                        shareReply(target.text)
+                    }
+                    AiShareChoice(stringResource(R.string.ai_share_all)) {
+                        shareFor = null
+                        shareChat()
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { shareFor = null }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
@@ -1268,6 +1276,15 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             },
         )
     }
+}
+
+@Composable
+private fun AiShareChoice(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 14.dp),
+    )
 }
 
 private class AiMem(val id: Long, val text: String)

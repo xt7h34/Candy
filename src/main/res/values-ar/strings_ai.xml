@@ -50,4 +50,7 @@
     <string name="ai_copied">اتنسخ</string>
     <string name="ai_act_resend">إعادة الإرسال</string>
     <string name="ai_share_fail">معرفتش أجهّز الصورة للمشاركة.</string>
+    <string name="ai_share_title">مشاركة</string>
+    <string name="ai_share_one">الرد ده</string>
+    <string name="ai_share_all">المحادثة كاملة</string>
 </resources>
