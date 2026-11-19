@@ -1,10 +1,15 @@
 package com.candy
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Base64
+import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +39,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,11 +52,17 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -83,6 +95,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -562,7 +575,7 @@ private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit)
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.padding(start = 34.dp).clip(CircleShape).clickable(enabled = !loading, onClick = onClick),
+        modifier = Modifier.clip(CircleShape).clickable(enabled = !loading, onClick = onClick),
     ) {
         Row(
             Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -572,12 +585,21 @@ private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit)
             if (loading) {
                 Text("…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Icon(
-                    if (playing) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
-                )
+                if (playing) {
+                    Icon(
+                        Icons.Rounded.Stop,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                } else {
+                    Icon(
+                        painterResource(R.drawable.ic_ear),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
                 Text(
                     stringResource(if (playing) R.string.ai_voice_stop else R.string.ai_voice_play),
                     style = MaterialTheme.typography.labelMedium,
@@ -585,6 +607,85 @@ private fun AiVoiceChip(playing: Boolean, loading: Boolean, onClick: () -> Unit)
                 )
             }
         }
+    }
+}
+
+/** Likes and dislikes on Candy's replies. For now they are kept on the phone only. */
+private object AiReact {
+    private fun sp(c: Context) = c.applicationContext.getSharedPreferences("candy_ai_react", Context.MODE_PRIVATE)
+
+    /** 1 = like, -1 = dislike, 0 = nothing. */
+    fun get(c: Context, n: Long): Int = sp(c).getInt("m$n", 0)
+
+    fun set(c: Context, n: Long, v: Int) {
+        val e = sp(c).edit()
+        if (v == 0) e.remove("m$n") else e.putInt("m$n", v)
+        e.apply()
+    }
+
+    fun clear(c: Context) {
+        sp(c).edit().clear().apply()
+    }
+}
+
+private fun aiPlain(text: String): String = text.replace("**", "")
+
+private fun copyAiText(ctx: Context, text: String) {
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    cm.setPrimaryClip(ClipData.newPlainText("Candy", aiPlain(text)))
+    // Android 13 and newer show their own "copied" note
+    if (Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, R.string.ai_copied, Toast.LENGTH_SHORT).show()
+}
+
+private fun shareAiText(ctx: Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, aiPlain(text))
+    }
+    runCatching { ctx.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+@Composable
+private fun AiActionIcon(icon: ImageVector, description: Int, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = stringResource(description),
+            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/** Under each of Candy's replies: listen (Pro and Elite), copy, like, dislike, share. */
+@Composable
+private fun AiActionRow(
+    voice: Boolean,
+    playing: Boolean,
+    loading: Boolean,
+    onVoice: () -> Unit,
+    react: Int,
+    onLike: () -> Unit,
+    onDislike: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 34.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (voice) {
+            AiVoiceChip(playing = playing, loading = loading, onClick = onVoice)
+            Spacer(Modifier.width(4.dp))
+        }
+        AiActionIcon(Icons.Outlined.ContentCopy, R.string.ai_act_copy, false, onCopy)
+        AiActionIcon(if (react == 1) Icons.Rounded.ThumbUp else Icons.Outlined.ThumbUp, R.string.ai_act_like, react == 1, onLike)
+        AiActionIcon(if (react == -1) Icons.Rounded.ThumbDown else Icons.Outlined.ThumbDown, R.string.ai_act_dislike, react == -1, onDislike)
+        AiActionIcon(Icons.Outlined.Share, R.string.ai_act_share, false, onShare)
     }
 }
 
@@ -842,6 +943,7 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
             val r = net.post("/candy/ai/clear")
             if (r.ok) {
                 msgs.clear()
+                AiReact.clear(ctx)
                 hasMore = false
                 error = ""
             } else {
@@ -1016,11 +1118,24 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                     if (newDay) AiDayChip(aiDayLabel(ctx, m.at))
                     AiBubble(m)
                     if (m.memAdded.isNotEmpty() || m.memRemoved.isNotEmpty()) AiMemChips(m, onOpenMemory)
-                    if (voiceAllowed && !m.mine && m.n > 0) {
-                        AiVoiceChip(
+                    if (!m.mine && m.n > 0) {
+                        var react by remember(m.n) { mutableStateOf(AiReact.get(ctx, m.n)) }
+                        AiActionRow(
+                            voice = voiceAllowed,
                             playing = VoicePlayer.playingKey == "ai#${m.n}",
                             loading = voiceBusy == m.n,
-                            onClick = { speak(m.n) },
+                            onVoice = { speak(m.n) },
+                            react = react,
+                            onLike = {
+                                react = if (react == 1) 0 else 1
+                                AiReact.set(ctx, m.n, react)
+                            },
+                            onDislike = {
+                                react = if (react == -1) 0 else -1
+                                AiReact.set(ctx, m.n, react)
+                            },
+                            onCopy = { copyAiText(ctx, m.text) },
+                            onShare = { shareAiText(ctx, m.text) },
                         )
                     }
                 }
@@ -1094,11 +1209,20 @@ fun AiChatScreen(net: Net, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
                     modifier = Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canSend) { if (showMic) onMicClick() else send() },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            if (showMic) Icons.Rounded.Mic else Icons.AutoMirrored.Rounded.Send,
-                            contentDescription = null,
-                            tint = if (canSend) cs.onPrimary else cs.onSurfaceVariant,
-                        )
+                        if (showMic) {
+                            Icon(
+                                painterResource(R.drawable.ic_wave),
+                                contentDescription = null,
+                                tint = if (canSend) cs.onPrimary else cs.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = null,
+                                tint = if (canSend) cs.onPrimary else cs.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

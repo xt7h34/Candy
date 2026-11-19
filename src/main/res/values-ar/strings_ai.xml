@@ -43,4 +43,9 @@
     <string name="ai_open_full">افتح المحادثة</string>
     <string name="ai_screen_chip">عن الشاشة دي</string>
     <string name="ai_screen_q">أنا في \"%1$s\" دلوقتي، ممكن تساعديني فيها؟</string>
+    <string name="ai_act_copy">نسخ</string>
+    <string name="ai_act_like">إعجاب</string>
+    <string name="ai_act_dislike">رفض</string>
+    <string name="ai_act_share">مشاركة</string>
+    <string name="ai_copied">اتنسخ</string>
 </resources>

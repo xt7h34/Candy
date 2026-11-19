@@ -43,4 +43,9 @@
     <string name="ai_open_full">Open full chat</string>
     <string name="ai_screen_chip">About this screen</string>
     <string name="ai_screen_q">I\'m on \"%1$s\" right now. Can you help me with it?</string>
+    <string name="ai_act_copy">Copy</string>
+    <string name="ai_act_like">Like</string>
+    <string name="ai_act_dislike">Dislike</string>
+    <string name="ai_act_share">Share</string>
+    <string name="ai_copied">Copied</string>
 </resources>
